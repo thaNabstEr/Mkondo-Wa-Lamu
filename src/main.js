@@ -6,21 +6,14 @@ import { Environment } from './env/environment.js';
 import { createSky } from './world/sky.js';
 import { createTerrain } from './world/terrain.js';
 import { generateWorld } from './world/generate.js';
-import { createGrass } from './world/grass.js';
 import { createWater, LAYER_WATER } from './world/water.js';
-import './world/sites.js';
-import { createFoliageTextures } from './world/foliage-tex.js';
-import { createTrees, createSacredTree } from './world/trees.js';
+import { loadMangroves, createMangroves } from './world/mangroves.js';
 import { loadProps, loadPropsHi, createProps } from './world/props.js';
-import { createWaterfall } from './world/waterfall.js';
-import { createArchitecture } from './world/architecture.js';
-import { terrainHeight, ISLAND, PLACES } from './world/layout.js';
-import { SITES } from './world/sites.js';
+import { terrainHeight, riverAt, openAt, PLACES } from './world/layout.js';
 import { createBoat, loadBoat, loadBoatHi } from './world/boat.js';
 import { loadFigures } from './world/figures.js';
 import { Journey } from './journey/journey.js';
 import { Director } from './journey/camera.js';
-import { smoothstep } from './lib/math.js';
 import { createFX } from './fx/fx.js';
 import { UI } from './ui/ui.js';
 import { Sound } from './audio/sound.js';
@@ -123,14 +116,15 @@ async function boot() {
   const sound = new Sound();
   const progress = (p) => ui.progress(p);
   const t0 = performance.now();
-  let pT = 0, pG = 0, pP = 0, pB = 0, pF = 0;
-  const report = () => progress(pT * 0.2 + pG * 0.46 + pP * 0.1 + pB * 0.08 + pF * 0.06);
-  const [tex, world, propSrc, boatSrc, figSrc] = await Promise.all([
+  let pT = 0, pG = 0, pP = 0, pB = 0, pF = 0, pM = 0;
+  const report = () => progress(pT * 0.16 + pG * 0.42 + pP * 0.08 + pB * 0.08 + pF * 0.06 + pM * 0.1);
+  const [tex, world, propSrc, boatSrc, figSrc, mangroveSrc] = await Promise.all([
     loadTextures(renderer, (p) => { pT = p; report(); }),
     generateWorld((p) => { pG = p; report(); }),
     loadProps((p) => { pP = p; report(); }),
     loadBoat(renderer, (p) => { pB = p; report(); }),
     loadFigures(renderer, (p) => { pF = p; report(); }),
+    loadMangroves((p) => { pM = p; report(); }),
   ]);
   const tGen = performance.now();
 
@@ -141,39 +135,13 @@ async function boot() {
   scene.add(terrain.group);
   const water = createWater(pipe.reflection);
   scene.add(water.mesh);
-  const ftex = createFoliageTextures();
-  ftex.blossomAtlas = tex.sakura_blossom;
-  ftex.blossomAtlasN = tex.sakura_blossom_n;
-  ftex.azaleaAtlas = tex.azalea_atlas;
-  ftex.azaleaAtlasN = tex.azalea_atlas_n;
-  ftex.coniferAtlas = tex.conifer_atlas;
-  ftex.coniferAtlasN = tex.conifer_atlas_n;
-  ftex.sakuraLeaf = tex.sakura_leaf;
-  ftex.sakuraLeafN = tex.sakura_leaf_n;
-  ftex.mapleAtlas = tex.maple_atlas;
-  ftex.mapleAtlasN = tex.maple_atlas_n;
-  ftex.broadAtlas = tex.broad_atlas;
-  ftex.broadAtlasN = tex.broad_atlas_n;
-  ftex.bambooAtlas = tex.bamboo_atlas;
-  ftex.bambooAtlasN = tex.bamboo_atlas_n;
-  ftex.flora = tex.ground_flora;
-  ftex.floraN = tex.ground_flora_n;
-  ftex.tall = tex.tall_flora;
-  ftex.tallN = tex.tall_flora_n;
-  const trees = createTrees(tex, ftex, world.trees);
+  const trees = createMangroves(mangroveSrc, world.trees);
   scene.add(trees);
-  pipe.reflection.lod.push(...trees.userData.reflLod);
-  const grass = createGrass(world.grass, ftex);
-  scene.add(grass);
-  const arch = createArchitecture(tex);
-  scene.add(arch);
   const props = createProps(propSrc, tex);
   scene.add(props);
-  scene.add(createWaterfall());
-  const lamps = arch.userData.lamps;
-  const sacredTree = createSacredTree(tex, ftex, ISLAND.x, terrainHeight(ISLAND.x, ISLAND.z), ISLAND.z);
-  scene.add(sacredTree);
-  console.log(`[sf] gen ${(tGen - t0).toFixed(0)}ms (${world.workers} workers) build ${(performance.now() - tGen).toFixed(0)}ms`, JSON.stringify(trees.userData.stats), JSON.stringify(grass.userData.stats), JSON.stringify(props.userData.stats));
+  // every light that comes on at dusk: for now only the boat's own lamp
+  const lamps = [];
+  console.log(`[sf] gen ${(tGen - t0).toFixed(0)}ms (${world.workers} workers) build ${(performance.now() - tGen).toFixed(0)}ms`, JSON.stringify(trees.userData.stats), JSON.stringify(props.userData.stats));
 
   const sun = new THREE.DirectionalLight(0xffffff, 1);
   sun.castShadow = true;
@@ -193,6 +161,7 @@ async function boot() {
   const fx = createFX(scene);
   const journey = new Journey();
   const director = new Director(camera, canvas);
+  director.seat = boat.seat;
 
   // ------------------------------------------------------------ control state
   const ctl = {
@@ -312,18 +281,12 @@ async function boot() {
     await ui.paperOut();
     ctl.turning = false;
   };
+  journey.onBump = (k) => {
+    sound.event('bump', { k });
+    director.shake(k);
+  };
   journey.onPlace = (place, idx) => {
     ui.chapter(place, idx, ctl.season);
-    // the temple bell tolls three times as the boat passes the village
-    if (place.id === 'village') {
-      for (const at of [2.5, 12, 21.5]) {
-        setTimeout(() => sound.event('bell', { dist: Math.hypot(camera.position.x - SITES.belfry.x, camera.position.z - SITES.belfry.z) }), at * 1000);
-      }
-    }
-  };
-  app.onBurst = (b) => {
-    const d = Math.hypot(camera.position.x - b.x, camera.position.y - b.y, camera.position.z - b.z);
-    sound.event('boom', { dist: d, delay: d / 343 });
   };
   env.onStrike = () => {
     const d = 300 + Math.random() * 1300;
@@ -333,7 +296,7 @@ async function boot() {
     if (!sound.ctx || !ctl.sound) return;
     sound.setOn(!document.hidden);
   });
-  const soundState = { seasonW: env.seasonW, season: 0, hours: 12, z: 0, night: 0, daylight: 1, rain: 0, snow: 0, wind: 0, mist: 0, speed: 0, oarPhase: 0, lake: false };
+  const soundState = { seasonW: env.seasonW, season: 0, hours: 12, z: 0, night: 0, daylight: 1, rain: 0, snow: 0, wind: 0, mist: 0, speed: 0, oarPhase: 0, open: 0 };
 
   let last = performance.now();
   const clock = { t: 0 };
@@ -362,14 +325,11 @@ async function boot() {
     if (ctl.autoTime) env.setHours(journey.hourAt());
     if (ctl.autoWeather) env.setWeather(journey.weatherAt(pose.z, ctl.season));
     env.update(dt);
-    const lakeK = smoothstep(-1900, -2150, pose.z);
-    U.uSpirit.value = env.night * (0.35 + 0.65 * lakeK);
 
     if (!ctl.staticCam) director.update(dt, pose);
     props.userData.update(camera);
     trees.userData.update(camera);
-    grass.userData.update(camera);
-    fx.update(dt, clock.t, { env, camera, onBurst: (b) => app.onBurst && app.onBurst(b) });
+    fx.update(dt, clock.t, { env, camera });
 
     sky.uniforms.uCloud.value = env.cloud;
     sky.uniforms.uCloudDark.value = env.dark;
@@ -414,7 +374,7 @@ async function boot() {
       S.night = env.night; S.daylight = env.daylight;
       S.rain = env.w.rain; S.snow = env.w.snow; S.wind = env.w.wind;
       S.mist = Math.min(1, Math.max(0, (env.w.mist - 0.55) / 1.25));
-      S.speed = pose.speed; S.oarPhase = boat.phase; S.lake = lakeK > 0.5;
+      S.speed = pose.speed; S.oarPhase = boat.phase; S.open = openAt(riverAt(pose.z).w);
       S.season = env.season; S.hours = env.hours; S.z = pose.z;
       sound.update(dt, S);
     }

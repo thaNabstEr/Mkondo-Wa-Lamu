@@ -1,25 +1,20 @@
-// Scanned props (Poly Haven, CC0): mossy rocks half-sunk at the waterline, in the shallows and on the banks;
-// ferns in the shade; a few stumps and fallen trunks. From Sketchfab (CC BY 4.0, credited in the About sheet):
-// a pair of komainu at the river gates and the jizo by the wayside shrine.
+// Scanned props (Poly Haven, CC0): mossy rocks half-sunk at the waterline, kept at the owner's request; a few
+// stumps and fallen trunks among the roots.
 // Placement is deterministic and instanced per mesh, so a few thousand props cost a few dozen draws.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { patch, WIND_GLSL, ktx2 } from '../core/shared.js';
-import { LEAF_VERT } from './trees.js';
+import { patch, ktx2 } from '../core/shared.js';
 import { rng, smoothstep, vnoise } from '../lib/math.js';
-import { riverAt, terrainHeight, waterSd, forestAt, terrainNormal, LAKE, ISLAND, Z_START } from './layout.js';
-import { LAYER_NOREFL } from '../core/pipeline.js';
-import { blocked, SITES } from './sites.js';
+import { riverAt, terrainHeight, waterSd, forestAt, terrainNormal, Z_START } from './layout.js';
+import { blocked } from './sites.js';
 
 const BASE = './assets/models/';
-const FILES = ['rock_moss_set_01', 'rock_moss_set_02', 'fern_02', 'tree_stump_01', 'dead_tree_trunk', 'komainu_moss', 'komainu_stone', 'jizo'];
-// pieces that stand together (a statue on its pedestal) share one origin instead of each centring on its own
-const WHOLE = new Set(['komainu_moss', 'komainu_stone', 'jizo']);
+const FILES = ['rock_moss_set_01', 'rock_moss_set_02', 'tree_stump_01', 'dead_tree_trunk'];
 
 // every mesh of a loaded scene baked into world space, in source order; a mirrored node turns its triangles
 // inside out once baked, so its winding is restored
-function bakeParts(scene) {
+export function bakeParts(scene) {
   scene.updateMatrixWorld(true);
   const parts = [];
   scene.traverse((o) => {
@@ -55,16 +50,14 @@ export async function loadProps(onProgress) {
   let done = 0;
   await Promise.all(FILES.map(async (id) => {
     const parts = bakeParts((await loader.loadAsync(BASE + id + '.glb')).scene);
-    const all = new THREE.Box3();
-    for (const p of parts) all.union(p.geo.boundingBox);
-    // each part stands on its own origin (centred, base at y = 0), or the whole set does
+    // each part stands on its own origin (centred, base at y = 0)
     for (const p of parts) {
-      const b = WHOLE.has(id) ? all : p.geo.boundingBox;
+      const b = p.geo.boundingBox;
       p.offset = new THREE.Vector3(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
       p.geo.translate(p.offset.x, p.offset.y, p.offset.z);
       p.geo.computeBoundingBox();
       p.geo.computeBoundingSphere();
-      p.size = (WHOLE.has(id) ? all : p.geo.boundingBox).getSize(new THREE.Vector3());
+      p.size = p.geo.boundingBox.getSize(new THREE.Vector3());
     }
     out[id] = parts;
     onProgress && onProgress(++done / FILES.length);
@@ -140,52 +133,6 @@ function rockMaterial(src, key, tex, wood) {
   return m;
 }
 
-// carved stone keeps its scanned colour; it takes the snow and the rain like everything else
-// (the scans' colour is baked dark, the mossy one darkest; weathered granite is pale)
-const SCAN_LIFT = { komainu_moss: 1.55, komainu_stone: 1.35, jizo: 1.15 };
-function scanMaterial(src, key) {
-  const m = src.clone();
-  m.metalness = 0;
-  m.color.setScalar(SCAN_LIFT[key]);
-  patch(m, { key: 'prop-' + key, snow: 1, wet: 0.8 });
-  return m;
-}
-
-// ferns sway with the same wind as the trees and turn with the seasons
-function plantMaterial(src, key, stiff) {
-  const m = src.clone();
-  m.alphaTest = 0.5;
-  m.alphaToCoverage = true;
-  m.transparent = false;
-  m.side = THREE.DoubleSide;
-  m.roughness = 0.85;
-  m.metalness = 0;
-  patch(m, {
-    key: 'prop-' + key, snow: 0.6, wet: 0.3, wrap: 0.5,
-    vertexHead: `#define SF_STIFF ${stiff.toFixed(3)}\n${WIND_GLSL}\nvarying float vSeedP;`,
-    fragHead: 'varying float vSeedP;',
-    hooks: {
-      vertex: LEAF_VERT + `
-        #ifdef USE_INSTANCING
-          vSeedP = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
-        #else
-          vSeedP = 0.5;
-        #endif`,
-      map: /* glsl */ `
-        {
-          vec3 c = diffuseColor.rgb;
-          float l = dot(c, vec3(0.3, 0.55, 0.15));
-          vec3 su = c * vec3(0.85, 0.95, 0.8);
-          vec3 au = vec3(l * 1.7, l * 1.15, l * 0.45);
-          vec3 wi = vec3(l * 1.1, l * 0.95, l * 0.75);
-          diffuseColor.rgb = c * uSeason.x + su * uSeason.y + au * uSeason.z + wi * uSeason.w;
-          diffuseColor.rgb *= 0.85 + 0.3 * vSeedP;
-        }`,
-    },
-  });
-  return m;
-}
-
 export function createProps(props, tex) {
   const group = new THREE.Group();
   group.name = 'props';
@@ -202,7 +149,7 @@ export function createProps(props, tex) {
     if (!bins.has(k)) bins.set(k, []);
     bins.get(k).push(m4.clone());
   };
-  const free = (x, z, m = 2) => !blocked(x, z, m) && Math.hypot(x - ISLAND.x, z - ISLAND.z) > ISLAND.r + 3;
+  const free = (x, z, m = 2) => !blocked(x, z, m);
   const ROCKS = [['rock_moss_set_01', props.rock_moss_set_01.length], ['rock_moss_set_02', props.rock_moss_set_02.length]];
   // a rock settles into the ground: sunk by a share of its height, tipped with the slope
   // one standing in the water must still break the surface, or it is wasted under the reflection
@@ -217,19 +164,17 @@ export function createProps(props, tex) {
     return true;
   };
 
-  // the waterline: clusters on both banks, thicker in the gorge, sparse past the village embankment
+  // the waterline: clusters on both banks, as far as the mouth
   for (let z = Z_START - 10; z > -2150; z -= R.range(7, 15)) {
     const r = riverAt(z);
-    const gorge = z < -1200 && z > -1620;
-    const embank = z < -790 && z > -1130;
     for (const side of [-1, 1]) {
-      if (R.next() > (gorge ? 0.9 : embank ? 0.12 : 0.6)) continue;
+      if (R.next() > 0.6) continue;
       // find the shore line by stepping out from the centre
       let x = r.x + side * r.w * 0.7;
       for (let i = 0; i < 40 && waterSd(x, z) < 0; i++) x += side * 0.5;
       const zz = z + R.range(-3, 3);
       if (!free(x, zz, 3)) continue;
-      const k = R.int(1, gorge ? 5 : 4);
+      const k = R.int(1, 4);
       for (let i = 0; i < k; i++) {
         const xx = x + side * R.range(-2.6, 1.5), z2 = zz + R.range(-3, 3);
         if (Math.abs(xx - r.x) < Math.max(1.5, r.w * 0.55 - 2.5) + 2.2) continue;
@@ -237,74 +182,30 @@ export function createProps(props, tex) {
       }
     }
   }
-  // the lake shore
-  for (let a = 0; a < Math.PI * 2; a += R.range(0.05, 0.12)) {
-    if (R.next() < 0.45) continue;
-    const rr = LAKE.r * (1 + 0.06 * Math.sin(a * 3 + 1.2) + 0.04 * Math.sin(a * 7 - 0.4)) + R.range(-2.5, 1.5);
-    const x = LAKE.x + Math.cos(a) * rr, z = LAKE.z + Math.sin(a) * rr;
-    if (z > -2160 || !free(x, z, 3)) continue;
-    rock(x, z, R.range(0.35, 0.9), R.range(0.3, 0.5));
-  }
-  // banks and lower slopes: scattered boulders, ferns in the shade, the odd stump or fallen trunk
+  // just back from the water, among the roots: the odd stump or fallen trunk (no ferns or boulders under mangroves)
   const STEP = 4;
   for (let z = Z_START; z > -2300; z -= STEP) {
-    const cx = riverAt(z).x;
-    for (let dx = -95; dx <= 95; dx += STEP) {
+    const cx = riverAt(z).x, w = riverAt(z).w;
+    for (let dx = -(w + 14); dx <= w + 14; dx += STEP) {
       const x = cx + dx + R.range(-1.8, 1.8), zz = z + R.range(-1.8, 1.8);
       const sd = waterSd(x, zz);
-      if (sd < 1.2 || sd > 85) continue;
+      if (sd < 1.5 || sd > 12) continue;
       if (!free(x, zz, 1.5)) continue;
+      if (R.next() > 0.006) continue;
       const h = terrainHeight(x, zz);
-      const f = forestAt(x, zz, h, sd);
-      const gorge = zz < -1200 && zz > -1620;
       terrainNormal(x, zz, 1.0, nrm);
-      const steep = 1 - nrm[1];
-      const roll = R.next();
-      const shade = Math.max(f, gorge ? 0.8 : 0);
-      if (roll < 0.014 + steep * 0.05 + (gorge ? 0.03 : 0) + (sd < 10 ? 0.03 : 0)) { rock(x, zz, R.range(0.3, 1.0), R.range(0.35, 0.6)); continue; }
-      // ferns gather in shade and along the gorge, in loose drifts
-      if (roll < 0.03 + shade * 0.11 + (sd < 14 ? 0.05 : 0) && sd < 55 && nrm[1] > 0.55 && vnoise(x * 0.08, zz * 0.08) > 0.42) {
-        const n = R.int(3, 7);
-        for (let i = 0; i < n; i++) {
-          const fx = x + R.range(-2.2, 2.2), fz = zz + R.range(-2.2, 2.2);
-          if (waterSd(fx, fz) < 0.8) continue;
-          add('fern_02', Math.floor(R.next() * props.fern_02.length), fx, terrainHeight(fx, fz) - 0.05, fz, R.range(1.3, 2.3), R.next() * 6.283, R.range(-0.1, 0.1), R.range(-0.1, 0.1));
-        }
-        continue;
-      }
-      if (roll > 0.9985 && sd > 4 && sd < 40 && nrm[1] > 0.85) {
-        if (R.next() < 0.55) add('tree_stump_01', 0, x, h - 0.12, zz, R.range(0.7, 1.1), R.next() * 6.283);
-        else {
-          // a fallen trunk lies along the slope, half in the litter
-          add('dead_tree_trunk', 0, x, h - 0.1, zz, R.range(1.2, 2.2), R.next() * 6.283, 0, -nrm[0] * 0.4);
-        }
-      }
+      if (R.next() < 0.45) add('tree_stump_01', 0, x, h - 0.12, zz, R.range(0.7, 1.1), R.next() * 6.283);
+      // a fallen trunk lies along the bank, half in the mud
+      else add('dead_tree_trunk', 0, x, h - 0.1, zz, R.range(1.2, 2.2), R.next() * 6.283, 0, -nrm[0] * 0.4);
     }
-  }
-
-  // the komainu face across the river and a little upstream, toward the boat coming up to the gates;
-  // the jizo face the water. FACE turns each scan's own front onto +z
-  const FACE = { komainu_moss: Math.PI / 2, komainu_stone: Math.PI / 2, jizo: 0 };
-  for (const k of SITES.komainu) {
-    const id = k.side < 0 ? 'komainu_moss' : 'komainu_stone';
-    const s = 1.75 / props[id][0].size.y;
-    const yaw = Math.atan2(-k.side, 0.55) + FACE[id];
-    for (let i = 0; i < props[id].length; i++) add(id, i, k.x, k.y - 0.04, k.z, s, yaw);
-  }
-  for (const [i, j] of SITES.jizo.entries()) {
-    const s = R.range(1.3, 1.55);
-    const y = terrainHeight(j.x, j.z) - 0.03;
-    for (let p = 0; p < props.jizo.length; p++) add('jizo', p, j.x, y, j.z, s, Math.PI / 2 + FACE.jizo + (i % 3 - 1) * 0.08);
   }
 
   const mats = {};
   const matFor = (id, part) => {
-    const k = WHOLE.has(id) ? id + part : id;
+    const k = id;
     if (mats[k]) return mats[k];
     const src = props[id][part].mat;
-    if (WHOLE.has(id)) mats[k] = scanMaterial(src, id);
-    else if (id.startsWith('rock') || id === 'tree_stump_01' || id === 'dead_tree_trunk') mats[k] = rockMaterial(src, id, tex, !id.startsWith('rock'));
-    else mats[k] = plantMaterial(src, id, 0.6);
+    mats[k] = rockMaterial(src, id, tex, !id.startsWith('rock'));
     return mats[k];
   };
   let instances = 0, tris = 0;
@@ -321,10 +222,7 @@ export function createProps(props, tex) {
     im.receiveShadow = true;
     im.matrixAutoUpdate = false;
     im.name = k;
-    const plant = id === 'fern_02';
-    // small plants stay out of the mirror and fade from the frame beyond a couple of hundred metres
-    if (plant) im.layers.set(LAYER_NOREFL);
-    lods.push({ im, far: plant ? 230 : id.startsWith('rock') ? 700 : WHOLE.has(id) ? 220 : 300 });
+    lods.push({ im, far: id.startsWith('rock') ? 700 : 300 });
     const pk = id + ':' + part;
     if (!binsOf.has(pk)) binsOf.set(pk, []);
     binsOf.get(pk).push({ im, list, pos: list.map((mm) => new THREE.Vector3().setFromMatrixPosition(mm)) });
@@ -336,8 +234,8 @@ export function createProps(props, tex) {
   // Instances inside the radius move out of their bin into a near pool, so each pass (view, shadow, mirror)
   // draws every prop exactly once. [radius m, most instances drawn at full detail]
   const NEAR = {
-    rock_moss_set_01: [45, 160], rock_moss_set_02: [45, 160], fern_02: [26, 240], tree_stump_01: [70, 12],
-    dead_tree_trunk: [70, 12], komainu_moss: [60, 2], komainu_stone: [60, 2], jizo: [45, 6],
+    rock_moss_set_01: [45, 160], rock_moss_set_02: [45, 160], tree_stump_01: [70, 12],
+    dead_tree_trunk: [70, 12],
   };
   const pools = [];
   const last = new THREE.Vector3(1e9, 0, 0);

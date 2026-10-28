@@ -7,7 +7,8 @@
 //                  "cam": { "yaw": 200, "pitch": 8, "d": 14, "ly": 2, "lz": 0, "fov": 40 } } ],
 //     "clips": [ { "name": "hero", "fps": 30, "seconds": 8, "s": 0, "h": 16.5, "z": -380,
 //                  "cam": { ... }, "camTo": { ... } } ] }
-// s: season 0-3 (spring..winter), h: hour 0-24, w: clear | mist | rain | storm | snow, z: journey position (m).
+// s: season 0-3 (spring..winter), h: hour 0-24, w: clear | mist | rain | storm | snow, z: journey position (m),
+// keys: key codes held down for the shot (e.g. ["KeyD"]).
 // cam orbits a point on the boat: yaw (deg, 0 = from ahead, 180 = from astern), pitch (deg), d (m), ly (m, height of
 // the point looked at), lz (m along the boat), fov (deg). Or "world": { "pos": [x, y, z], "look": [x, y, z] }.
 // camTo, when given, is eased to over the clip. Frames land in <out>/<clip>/%04d.png; encode them with ffmpeg.
@@ -88,19 +89,26 @@ const stage = (s) => page.evaluate((s) => {
   if (s.h !== undefined) { app.setHours(s.h); env.setHours(s.h, true); }
   if (s.w !== undefined) app.setWeather(s.w);
   if (s.z !== undefined) journey.s = journey.sAtZ(s.z);
+  // the interface stays out of every frame, whatever the H key's state
+  window.__sf.ui.root.classList.add('hidden');
   // season, hour, weather, snow cover and wet ground all jump to their targets instead of easing over a minute
   env.update(0, true);
   window.__cam = s.cam || null;
 }, s);
 const tick = (n, fps) => page.evaluate(([n, ms]) => window.__tick(n, ms), [n, 1000 / fps]);
+// a few simulated seconds first, so the first shot is not taken while the scene is still fading in
+for (let i = 0; i < (cfg.warm ?? 4) * 30; i += 10) await tick(10, 30);
 
 for (const s of cfg.shots || []) {
   await stage(s);
+  // keys (e.g. ["KeyD"]) are held down through the settle and the shot: the helm put over, the sail worked
+  for (const k of s.keys || []) await page.keyboard.down(k);
   // let weather, light and the water's wake settle in simulated time, a few frames at a time
   const fps = 30, n = Math.round((s.settle ?? 4) * fps);
   for (let i = 0; i < n; i += 10) await tick(Math.min(10, n - i), fps);
   await page.waitForTimeout(150);
   await page.screenshot({ path: join(out, `${s.name}.png`) });
+  for (const k of s.keys || []) await page.keyboard.up(k);
   console.log('shot', s.name);
 }
 

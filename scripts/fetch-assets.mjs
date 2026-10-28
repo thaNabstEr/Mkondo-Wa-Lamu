@@ -2,9 +2,11 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const OUT = new URL('../public/assets/tex/', import.meta.url).pathname;
-const TMP = new URL('../.cache/', import.meta.url).pathname;
+// (fileURLToPath, not .pathname: the project's path has spaces, which .pathname leaves as %20)
+const OUT = fileURLToPath(new URL('../public/assets/tex/', import.meta.url));
+const TMP = fileURLToPath(new URL('../.cache/', import.meta.url));
 mkdirSync(OUT, { recursive: true });
 mkdirSync(TMP, { recursive: true });
 
@@ -14,20 +16,9 @@ const LIST = [
   ['leafy_grass', 1024, 'cn'],
   ['rock_face', 1024, 'cn'],
   ['lichen_rock', 1024, 'cn'],
-  ['ganges_river_pebbles', 1024, 'cn'],
+  ['damp_beach_sand_02', 1024, 'cn'],
   ['snow_02', 1024, 'cn'],
   ['forest_leaves_02', 1024, 'cn'],
-  ['weathered_planks', 1024, 'cn'],
-  ['hinoki_planks', 1024, 'cn'],
-  ['sakura_bark', 1024, 'cn'],
-  ['pine_bark', 1024, 'cn'],
-  ['japanese_cedar_bark', 1024, 'cn'],
-  ['jolcham_oak_bark_01', [1024, 2048], 'cn'],
-  ['trident_maple_bark', 1024, 'cn'],
-  ['japanese_stone_wall', 1024, 'cn'],
-  ['grey_roof_tiles', 1024, 'cn'],
-  ['reed_roof_04', 1024, 'cn'],
-  ['painted_plaster_wall', 1024, 'cn'],
 ];
 const KEY = { c: 'Diffuse', n: 'nor_gl', r: 'Rough' };
 

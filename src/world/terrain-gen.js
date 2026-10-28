@@ -2,13 +2,15 @@
 import { riverAt, terrainHeight, waterSd, forestAt } from './layout.js';
 import './sites.js';
 
-export const T_Z0 = 760, T_Z1 = -2960, CHUNK = 120;
+export const T_Z0 = 760, T_Z1 = -3800, CHUNK = 120;
 
 function columnOffsets() {
   const off = [0];
   let x = 0, step = 1.3;
-  while (x < 900) {
-    if (x > 46) step *= 1.05;
+  // out to 3 km either side, so the land's edge is lost in the haze across the open water at the end
+  while (x < 3000) {
+    // dense at the water, opening out across the forest, and coarse in the haze
+    if (x > 46) step *= x > 300 ? 1.14 : 1.05;
     x += step;
     off.push(x);
   }

@@ -23,6 +23,10 @@ export class Director {
     this.fov = 50;
     this.lookYaw = 0; this.lookPitch = 0;
     this.first = true;
+    // where the seat camera sits on the boat: metres forward of its centre, height above the water (main.js sets it)
+    this.seat = { z: 0.9, y: 1.1 };
+    // a knock against a bank shakes the view for a moment
+    this.shakeK = 0;
     this._fw = V(); this._rt = V(); this._v = V();
     this.bind(dom);
   }
@@ -74,6 +78,9 @@ export class Director {
 
   pinchD(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1; }
 
+  // strength 0..1
+  shake(k) { this.shakeK = Math.min(1, Math.max(this.shakeK, k)); }
+
   setMode(m) {
     if (this.mode === m) return;
     this.mode = m;
@@ -118,8 +125,9 @@ export class Director {
       this.tLook.set(boat.x + fx * 3.5, 1.6 + this.dist * 0.04, boat.z + fz * 3.5);
     } else if (this.mode === 'seat') {
       const a = h + this.lookYaw;
-      this.tPos.set(boat.x + fx * 1.9, 0.86, boat.z + fz * 1.9);
-      this.tLook.set(this.tPos.x + Math.sin(a) * 10, 0.86 + Math.tan(this.lookPitch) * 10, this.tPos.z + Math.cos(a) * 10);
+      const st = this.seat;
+      this.tPos.set(boat.x + fx * st.z, st.y, boat.z + fz * st.z);
+      this.tLook.set(this.tPos.x + Math.sin(a) * 10, st.y + Math.tan(this.lookPitch) * 10, this.tPos.z + Math.cos(a) * 10);
       snap = true;
     } else if (this.mode === 'cinema') {
       if (!this.shot || this.shot.t > this.shot.dur) { this.nextShot(boat); snap = true; }
@@ -176,6 +184,13 @@ export class Director {
     }
     cam.position.copy(this.pos);
     cam.lookAt(this.look);
+    if (this.shakeK > 0.002) {
+      const t = performance.now() * 0.001, k = this.shakeK * this.shakeK;
+      cam.rotateX(Math.sin(t * 37.0) * 0.012 * k);
+      cam.rotateZ(Math.sin(t * 29.0 + 1.3) * 0.018 * k);
+      cam.position.y += Math.sin(t * 23.0) * 0.05 * k;
+      this.shakeK *= Math.exp(-dt * 4);
+    }
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov += (this.fov - cam.fov) * (1 - Math.exp(-dt * 6));
       cam.updateProjectionMatrix();

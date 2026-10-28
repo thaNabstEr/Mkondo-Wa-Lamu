@@ -1,13 +1,13 @@
-// The people on the boat: sculpted, dressed and posed in Blender (pipeline/figs), skinned so they can turn their heads.
-// Their fabrics are drawn here: the furisode's dyed and gold-worked sakura, a brocade obi, oiled hair, a janome
-// wagasa that glows red when the sun is behind it. Parts that share a material carry an id in vertex colour.
+// The boatman: sculpted, dressed and posed in Blender (pipeline/figs), skinned so he can turn his head and move
+// his arms and legs. His fabrics are drawn here. Parts that share a material carry an id in vertex colour.
+// (Sakura's passenger and her wagasa are not aboard the dhow.)
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { patch, ktx2 } from '../core/shared.js';
 
 const URL = './assets/models/figures/';
-const FILES = { passenger: 'passenger.glb', wagasa: 'wagasa.glb', boatman: 'boatman.glb' };
+const FILES = { boatman: 'boatman.glb' };
 
 export async function loadFigures(renderer, onProgress) {
   const loader = new GLTFLoader().setKTX2Loader(ktx2(renderer)).setMeshoptDecoder(MeshoptDecoder);
@@ -23,7 +23,7 @@ export async function loadFigures(renderer, onProgress) {
 
 // ---------------------------------------------------------------- shared shader pieces
 // positions arrive quantised to the mesh's own unit box (the scale is folded into the skin's inverse binds); uDeq
-// maps them back to the figure's frame in metres. The passenger's patterns were laid out in the unit box and keep it.
+// maps them back to the figure's frame in metres.
 const VERT = /* glsl */ `attribute vec4 pid; uniform mat4 uDeq; varying vec4 vPid; varying vec3 vObj; varying vec3 vObjN; varying vec2 vFUv;`;
 const FRAG = /* glsl */ `
 varying vec4 vPid; varying vec3 vObj; varying vec3 vObjN; varying vec2 vFUv;
@@ -143,166 +143,6 @@ float fgCrepe(vec2 p) {
 }
 `;
 
-function kimonoMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({
-    roughness: 0.62, sheen: 1.0, sheenRoughness: 0.45, sheenColor: new THREE.Color(0.75, 0.55, 0.65),
-  });
-  return figMat(m, 'kimono', {
-    wet: 0.7,
-    head: SAKURA + 'vec3 fgGold = vec3(0.0);',
-    map: /* glsl */ `
-      {
-        vec3 an = abs(normalize(vObjN));
-        vec3 w = pow(an, vec3(10.0)); w /= w.x + w.y + w.z;
-        float y = vObj.y;
-        // below the obi the left panel lies over the right; its edge (the okumi) runs down the lap on her right,
-        // and the panel underneath carries the pattern from further along the cloth
-        float ex = -0.055 - (0.405 - y) * 0.08;
-        float under = (vObj.z > 0.03 && y < 0.405 && vObj.x > -0.19) ? step(vObj.x, ex) : 0.0;
-        vec3 P = vObj + vec3(under * 0.23, 0.0, 0.0);
-        float g0, g1, g2, h0, h1, h2;
-        vec3 c0 = w.x > 0.01 ? fgKimono(vec2(P.z * sign(vObjN.x), y), y, g0, h0) : vec3(0.0);
-        vec3 c1 = w.z > 0.01 ? fgKimono(vec2(P.x * sign(vObjN.z), y), y, g1, h1) : vec3(0.0);
-        vec3 c2 = w.y > 0.01 ? fgKimono(vec2(P.x, -P.z), y, g2, h2) : vec3(0.0);
-        if (w.x <= 0.01) { g0 = 0.0; h0 = 0.0; }
-        if (w.z <= 0.01) { g1 = 0.0; h1 = 0.0; }
-        if (w.y <= 0.01) { g2 = 0.0; h2 = 0.0; }
-        vec3 col = c0 * w.x + c1 * w.z + c2 * w.y;
-        float gold = g0 * w.x + g1 * w.z + g2 * w.y;
-        fgH = h0 * w.x + h1 * w.z + h2 * w.y + fgCrepe(vec2(vObj.x + vObj.z, y));
-        if (vObj.z > 0.03 && y < 0.405 && vObj.x > -0.19) {
-          float de = vObj.x - ex;
-          col *= 1.0 - 0.6 * under * smoothstep(-0.012, 0.0, de);
-          col *= 1.0 + 0.18 * (1.0 - under) * smoothstep(0.004, 0.0, de);
-          fgH += smoothstep(-0.001, 0.002, de) * 0.0012;
-        }
-        // gold: leaf and couched thread, warm and a little broken
-        vec3 gc = vec3(0.95, 0.66, 0.26) * (0.8 + 0.35 * sfNoise(vObj.xy * 900.0));
-        diffuseColor.rgb = mix(col, gc, gold);
-        fgRough = mix(0.62, 0.32, gold);
-        fgMetal = gold * 0.85;
-      }`,
-  });
-}
-
-// the lining shows at the sleeve openings and the hem: plain red silk (momi)
-function liningMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.56, 0.035, 0.06), roughness: 0.5, sheen: 0.8, sheenRoughness: 0.4, sheenColor: new THREE.Color(0.9, 0.3, 0.3), side: THREE.DoubleSide });
-  return figMat(m, 'lining', { map: '' });
-}
-
-// ---------------------------------------------------------------- small cloth parts, one material by id
-function clothMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ roughness: 0.7, sheen: 0.7, sheenRoughness: 0.5, sheenColor: new THREE.Color(0.8, 0.7, 0.7) });
-  return figMat(m, 'cloth', {
-    wet: 0.6,
-    head: SAKURA,
-    map: /* glsl */ `
-      {
-        vec3 col = vec3(0.8);
-        float rough = 0.7, metal = 0.0;
-        vec2 uv = vFUv;
-        if (fgId(0.05)) {
-          // han-eri: white silk, a little shot with silver embroidery
-          col = vec3(0.82, 0.8, 0.76);
-          float g = 0.0, h = 0.0; vec3 c2 = col;
-          fgBlossoms(vec2(vObj.x * 1.4, vObj.y * 1.4), 0.03, 0.5, 0.2, c2, g, h);
-          col = mix(col, vec3(0.92, 0.92, 0.95), g * 0.6);
-          fgH = h * 0.5 + fgCrepe(vObj.xy);
-          rough = mix(0.62, 0.35, g);
-        } else if (fgId(0.15)) {
-          // date-eri: the second collar, pale gold
-          col = vec3(0.78, 0.55, 0.2); rough = 0.42; metal = 0.45;
-          fgH = fgCrepe(vObj.xy * 1.3);
-        } else if (fgId(0.25) || fgId(0.45)) {
-          // obiage and the kanoko in her hair: red shibori, every tie a pale dot with a dimple
-          vec2 q = fgId(0.25) ? vec2(uv.x * 0.35, uv.y * 3.0) : uv * vec2(10.0, 4.0);
-          q = vec2(q.x * 30.0, q.y * 6.0);
-          q.x += 0.5 * mod(floor(q.y), 2.0);
-          vec2 f = fract(q) - 0.5;
-          float d = length(f * vec2(1.0, 1.3));
-          float dot_ = smoothstep(0.32, 0.2, d);
-          col = mix(vec3(0.5, 0.012, 0.03), vec3(0.85, 0.72, 0.72), dot_ * smoothstep(0.08, 0.14, d)) ;
-          fgH = (1.0 - smoothstep(0.0, 0.35, d)) * 0.0003;
-          rough = 0.75;
-        } else if (fgId(0.35)) {
-          // obijime: a flat kumihimo braid, crimson with a gold line, its strands slanting in a chevron
-          float s = fract(uv.x * 55.0 + abs(uv.y - 0.5) * 6.0);
-          float gl = smoothstep(0.06, 0.03, abs(abs(uv.y - 0.5) - 0.25));
-          col = mix(vec3(0.42, 0.01, 0.03), vec3(0.85, 0.6, 0.18), gl);
-          col *= 0.75 + 0.35 * smoothstep(0.0, 0.5, s) * smoothstep(1.0, 0.5, s);
-          fgH = smoothstep(0.0, 0.5, s) * smoothstep(1.0, 0.5, s) * 0.0004;
-          rough = mix(0.55, 0.35, gl); metal = gl * 0.7;
-        } else if (fgId(0.55)) {
-          // tabi: white cotton
-          col = vec3(0.8, 0.79, 0.76); rough = 0.88;
-          fgH = sfNoise(vObj.xz * 900.0) * 0.00004;
-        } else if (fgId(0.65)) {
-          // zabuton: aubergine silk damask, a shippo of interlocking rings showing only in the sheen
-          vec2 q = uv * 7.0;
-          vec2 a = fract(q) - 0.5, b = fract(q + 0.5) - 0.5;
-          float ring = min(abs(length(a) - 0.5), abs(length(b) - 0.5));
-          float ln = smoothstep(0.06, 0.02, ring);
-          col = vec3(0.055, 0.012, 0.04) * (1.0 + ln * 0.3);
-          rough = mix(0.62, 0.4, ln);
-          fgH = ln * 0.0002;
-        } else {
-          // tassels and the centre tuft: gold-red silk floss
-          col = vec3(0.7, 0.32, 0.04); rough = 0.45; metal = 0.3;
-          fgH = sfNoise(vec2(atan(vObj.x, vObj.z) * 80.0, vObj.y * 10.0)) * 0.0002;
-        }
-        diffuseColor.rgb = col;
-        fgRough = rough; fgMetal = metal;
-      }`,
-  });
-}
-
-// ---------------------------------------------------------------- obi: gold brocade, kikko lattice with hanabishi
-function obiMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ roughness: 0.45, metalness: 0.6, sheen: 0.4, sheenColor: new THREE.Color(1.0, 0.8, 0.5) });
-  return figMat(m, 'obi', {
-    wet: 0.5,
-    map: /* glsl */ `
-      {
-        // hex lattice in obi-height units
-        vec2 p = vFUv * vec2(3.2, 3.2);
-        vec2 r = vec2(1.0, 1.7320508);
-        vec2 h = r * 0.5;
-        vec2 a = mod(p, r) - h, b = mod(p - h, r) - h;
-        vec2 gv = dot(a, a) < dot(b, b) ? a : b;
-        vec2 id = p - gv;
-        // distance to the hexagon's edge
-        vec2 ag = abs(gv);
-        float hex = 0.5 - max(dot(ag, normalize(vec2(1.0, 1.7320508))), ag.x);
-        float line = smoothstep(0.035, 0.015, hex);
-        float line2 = smoothstep(0.075, 0.055, hex) - line;
-        // inside each, a hanabishi: four petals in a lozenge
-        vec2 q = gv * 2.6;
-        float ang = atan(q.y, q.x);
-        float pr = 0.55 * pow(abs(cos(2.0 * ang)), 0.6) + 0.08;
-        float flower = smoothstep(0.03, -0.03, length(q * vec2(1.0, 0.75)) - pr);
-        float eye = smoothstep(0.1, 0.06, length(q));
-        float k = sfHash12(floor(id * 10.0 + 0.5));
-        vec3 fc = k < 0.25 ? vec3(0.42, 0.015, 0.03) : k < 0.5 ? vec3(0.02, 0.16, 0.1) : k < 0.75 ? vec3(0.1, 0.04, 0.22) : vec3(0.75, 0.72, 0.66);
-        // ground: woven gold, a twill catching the light thread by thread
-        float tw = fract((vFUv.x + vFUv.y) * 260.0);
-        float twill = smoothstep(0.0, 0.5, tw) * smoothstep(1.0, 0.5, tw);
-        float fade = 1.0 - smoothstep(0.002, 0.006, fwidth(vFUv.x * 260.0) * 0.004);
-        vec3 gold = vec3(0.85, 0.58, 0.2) * (0.85 + 0.25 * twill * fade);
-        vec3 col = gold;
-        col = mix(col, vec3(0.06, 0.03, 0.02), line);
-        col = mix(col, gold * 1.15, line2);
-        col = mix(col, fc, flower);
-        col = mix(col, vec3(0.9, 0.7, 0.3), eye);
-        float silk = max(flower * (1.0 - eye), line);
-        diffuseColor.rgb = col;
-        fgMetal = mix(0.75, 0.0, silk);
-        fgRough = mix(0.42, 0.62, silk);
-        fgH = (twill * fade * 0.00008 + flower * 0.0003 - line * 0.0002);
-      }`,
-  });
-}
-
 // ---------------------------------------------------------------- hair: lacquer-black, combed toward the mage
 const HAIR_LIGHT = /* glsl */ `
       {
@@ -327,62 +167,6 @@ const HAIR_LIGHT = /* glsl */ `
         float f = pow(1.0 - max(dot(normal, Vd), 0.0), 4.0);
         reflectedLight.indirectSpecular += uSkyHor * f * 0.12 * (0.6 + 0.8 * s1);
       }`;
-
-function hairMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.008, 0.008, 0.011), roughness: 0.55 });
-  return figMat(m, 'hair', {
-    snow: 0.8,
-    wet: 0.3,
-    map: /* glsl */ `
-      {
-        // comb lines: strands as fine ridges across the flow
-        float s = sfNoise(vec2(vFUv.y * 260.0, vFUv.x * 6.0)) * 0.6 + sfNoise(vec2(vFUv.y * 900.0, vFUv.x * 14.0)) * 0.4;
-        diffuseColor.rgb *= 0.75 + 0.6 * s;
-        fgH = s * 0.00012;
-      }`,
-    light: HAIR_LIGHT,
-  });
-}
-
-// ---------------------------------------------------------------- kanzashi: lacquer comb, bekko pin, silk blossoms
-function kanzashiMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ roughness: 0.4, side: THREE.DoubleSide, sheen: 0.5, sheenColor: new THREE.Color(1, 0.8, 0.85) });
-  return figMat(m, 'kanzashi', {
-    snow: 0.3,
-    head: 'float fgClear = 0.0;',
-    map: /* glsl */ `
-      {
-        vec3 col; float rough = 0.4, metal = 0.0;
-        if (fgId(0.1)) {
-          // kushi: black urushi with a gold maki-e band along the spine
-          float band = smoothstep(0.62, 0.66, vFUv.y) * smoothstep(0.94, 0.9, vFUv.y);
-          float dots = step(0.5, fract(vFUv.x * 24.0)) * step(0.72, vFUv.y) * step(vFUv.y, 0.84);
-          float g = max(band * (1.0 - dots * 0.0), 0.0) * step(vFUv.y, 0.9);
-          col = mix(vec3(0.012, 0.008, 0.006), vec3(0.95, 0.66, 0.24), g);
-          rough = mix(0.12, 0.3, g); metal = g;
-        } else if (fgId(0.3)) {
-          // kogai: bekko, amber with dark clouding
-          float n = sfNoise(vObj.xz * 260.0 + vObj.y * 90.0) * 0.6 + sfNoise(vObj.xy * 700.0) * 0.4;
-          col = mix(vec3(0.32, 0.11, 0.015), vec3(0.04, 0.012, 0.004), smoothstep(0.35, 0.7, n));
-          rough = 0.16;
-        } else if (fgId(0.5)) {
-          // tsumami petals: folded silk, deeper at the tips
-          float t = vFUv.y;
-          float k = sfHash13(floor(vObj * 300.0));
-          col = mix(vec3(0.95, 0.78, 0.8), mix(vec3(0.85, 0.36, 0.48), vec3(0.7, 0.12, 0.25), k), smoothstep(0.15, 1.0, t));
-          rough = 0.55;
-          fgH = sin(vFUv.x * 40.0) * 0.00005;
-        } else if (fgId(0.7)) {
-          col = vec3(0.95, 0.7, 0.25); rough = 0.3; metal = 1.0;
-        } else {
-          // bira: silver strands
-          col = vec3(0.92, 0.92, 0.95); rough = 0.22; metal = 1.0;
-        }
-        diffuseColor.rgb = col;
-        fgRough = rough; fgMetal = metal;
-      }`,
-  });
-}
 
 // ---------------------------------------------------------------- skin: the shaved line under the hair, and warmth
 function skinMaterial(src, beard = false) {
@@ -409,116 +193,9 @@ function skinMaterial(src, beard = false) {
   });
 }
 
-// ---------------------------------------------------------------- wagasa
-function paperMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.4, side: THREE.DoubleSide });
-  return figMat(m, 'wagasa-paper', {
-    snow: 0.9,
-    wet: 0.4,
-    head: 'vec3 fgTr = vec3(0.0);',
-    map: /* glsl */ `
-      {
-        // janome: red centre and border, a ring of white washi between; the edge paper darker; the head caps lacquered
-        float f = vFUv.y;
-        float ring = smoothstep(0.318, 0.322, f) * smoothstep(0.502, 0.498, f);
-        vec3 red = vec3(0.34, 0.008, 0.01);
-        vec3 col = mix(red, vec3(0.78, 0.71, 0.56), ring);
-        col = mix(col, vec3(0.22, 0.008, 0.008), smoothstep(0.972, 0.978, f));
-        float fib = sfNoise(vFUv * vec2(1400.0, 420.0)) * 0.6 + sfNoise(vFUv * vec2(300.0, 90.0)) * 0.4;
-        col *= 0.9 + 0.2 * fib;
-        if (fgId(0.15)) col = vec3(0.12, 0.01, 0.008);
-        diffuseColor.rgb = col;
-        fgTr = fgId(0.15) ? vec3(0.0) : mix(vec3(0.95, 0.12, 0.06), vec3(1.0, 0.86, 0.6), ring) * (0.8 + 0.4 * fib);
-        fgH = fib * 0.00004;
-      }`,
-    light: /* glsl */ `
-      {
-        // from below: daylight through the oiled paper; the ribs, stretchers and threads are solid against it
-        if (!gl_FrontFacing) {
-          float sunT = max(dot(-sfNW, uSunDir), 0.0);
-          reflectedLight.indirectDiffuse += (uSunCol * sunT * 0.32 + uAmbUp * 0.9) * fgTr * 0.55;
-        }
-      }`,
-  });
-}
-
-function frameMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ roughness: 0.5 });
-  return figMat(m, 'wagasa-frame', {
-    snow: 0.3,
-    map: /* glsl */ `
-      {
-        vec3 col; float rough = 0.5, metal = 0.0;
-        if (fgId(0.3) || fgId(0.35)) {
-          // split bamboo, the skin side darker
-          float g = sfNoise(vec2(vFUv.x * 30.0, vFUv.y * 3.0));
-          col = mix(vec3(0.33, 0.19, 0.07), vec3(0.45, 0.3, 0.12), g);
-          if (fgId(0.35)) col *= 1.15;
-          rough = 0.55;
-        } else if (fgId(0.4)) {
-          col = vec3(0.015, 0.01, 0.008); rough = 0.2;
-        } else if (fgId(0.45)) {
-          // turned and lacquered: the head and runner
-          col = vec3(0.1, 0.02, 0.012); rough = 0.25;
-          float th = fract(vFUv.y * 180.0);
-          col = mix(col, vec3(0.6, 0.45, 0.12), smoothstep(0.45, 0.5, th) * smoothstep(0.55, 0.5, th) * step(0.5, sfHash12(vec2(floor(vFUv.y * 180.0), 1.0))));
-        } else if (fgId(0.55)) {
-          // the bamboo shaft: lengthwise fibres
-          float g = sfNoise(vec2(vFUv.x * 40.0, vFUv.y * 4.0));
-          col = mix(vec3(0.42, 0.27, 0.1), vec3(0.55, 0.38, 0.16), g);
-          rough = 0.45;
-        } else {
-          // rattan wound on the grip: a tight helix of glossy cane
-          float s = fract(vFUv.y / 0.0042 + vFUv.x);
-          float cane = smoothstep(0.0, 0.18, s) * smoothstep(1.0, 0.82, s);
-          col = mix(vec3(0.1, 0.05, 0.02), vec3(0.5, 0.33, 0.13), cane);
-          rough = mix(0.7, 0.35, cane);
-          fgH = cane * 0.0004;
-        }
-        diffuseColor.rgb = col;
-        fgRough = rough; fgMetal = metal;
-      }`,
-  });
-}
-
-function threadMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ roughness: 0.6, sheen: 0.8, sheenColor: new THREE.Color(1, 1, 1), side: THREE.DoubleSide });
-  return figMat(m, 'wagasa-thread', {
-    snow: 0.2,
-    alpha: /* glsl */ `
-      {
-        // the runner's kagari is a web: threads with gaps between
-        if (fgId(0.85)) {
-          float s = fract(vFUv.x * 48.0 * 3.0 + vFUv.y * 2.0);
-          if (smoothstep(0.0, 0.25, s) * smoothstep(1.0, 0.75, s) < 0.35) discard;
-        }
-      }`,
-    map: /* glsl */ `
-      {
-        vec3 col = vec3(0.5);
-        if (fgId(0.75) || fgId(0.85)) {
-          // kagari-ito: rings of coloured silk worked round the ribs
-          float band = floor(fract(vFUv.y) * 6.0);
-          vec3 cs[6] = vec3[6](vec3(0.03, 0.22, 0.09), vec3(0.75, 0.5, 0.08), vec3(0.5, 0.02, 0.03), vec3(0.78, 0.76, 0.7), vec3(0.03, 0.05, 0.3), vec3(0.75, 0.5, 0.08));
-          col = cs[int(band)];
-          float s = fract(vFUv.x * 48.0 * 4.0 + fract(vFUv.y) * 9.0);
-          float st = smoothstep(0.0, 0.4, s) * smoothstep(1.0, 0.6, s);
-          col *= 0.7 + 0.5 * st;
-          fgH = st * 0.0002;
-        } else if (fgId(0.95)) {
-          col = vec3(0.15, 0.03, 0.22);
-        } else {
-          col = vec3(0.45, 0.02, 0.03);
-        }
-        diffuseColor.rgb = col;
-      }`,
-  });
-}
-
 // ---------------------------------------------------------------- the sendo: indigo cotton, sedge and straw
 // figure frame: x his left, y up, z forward; the hanten's hem at 0.70, the obi from 0.832 to 0.92
 const MAN = /* glsl */ `
-uniform sampler2D uEriTex;
 // aizome from the deep vat to sun-faded
 vec3 manAi(float k) { return mix(vec3(0.0095, 0.019, 0.058), vec3(0.034, 0.072, 0.17), k); }
 const vec3 MAN_WHITE = vec3(0.6, 0.59, 0.54);
@@ -560,14 +237,6 @@ float manKoshi(vec3 P) {
   float lines = max(fgAAw(abs(P.y - 0.709) - 0.0034, px), fgAAw(abs(P.y - 0.795) - 0.0026, px));
   return max(l * step(abs(y), 0.03), lines);
 }
-// one glyph of the collar lettering: u0 where its top (down = 1) or bottom (down = -1) sits along the band
-float manGlyph(float u, float v, float u0, float down, vec2 cell, float flip) {
-  float gy = down > 0.0 ? 1.0 - (u - u0) / 0.04 : (u - u0) / 0.04;
-  float gx = (v * 0.05 - 0.005) / 0.04;
-  gx = flip > 0.0 ? 1.0 - gx : gx;
-  if (gx < 0.0 || gx > 1.0 || gy < 0.0 || gy > 1.0) return 0.0;
-  return texture2D(uEriTex, (cell + vec2(gx, 1.0 - gy)) * 0.5).r;
-}
 `;
 
 function manClothMaterial(src) {
@@ -575,7 +244,6 @@ function manClothMaterial(src) {
   return figMat(m, 'man-cloth', {
     wet: 0.85,
     head: SAKURA + MAN,
-    uniforms: { uEriTex: { value: src.map } },
     map: /* glsl */ `
       {
         vec3 P = vObj;
@@ -598,13 +266,11 @@ function manClothMaterial(src) {
           }
           if (!gl_FrontFacing) col = vec3(0.006, 0.01, 0.028);
         } else if (fgId(0.2)) {
-          // the eri: black-indigo, the shop's name dyed out white down both sides of the chest
+          // the eri: plain black-indigo with its stitching. (Sakura dyed a shop's name down it in kanji; on the Lamu
+          // coast it is left blank until he is dressed as a nahodha.)
           float u = vFUv.x, v = vFUv.y;
           col = vec3(0.006, 0.0075, 0.013);
-          float g = max(max(manGlyph(u, v, 0.864, 1.0, vec2(0.0, 0.0), 0.0), manGlyph(u, v, 0.906, 1.0, vec2(1.0, 0.0), 0.0)),
-                        max(manGlyph(u, v, 0.108, -1.0, vec2(0.0, 1.0), 1.0), manGlyph(u, v, 0.066, -1.0, vec2(1.0, 1.0), 1.0)));
           float st = smoothstep(0.012, 0.0, abs(abs(v - 0.5) - 0.42)) * step(0.4, fract(u / 0.004));
-          col = mix(col, MAN_WHITE, g * 0.95);
           col = mix(col, vec3(0.05, 0.05, 0.06), st * 0.6);
           rough = 0.62;
           fgH = st * 0.00012 + wv * 0.00003;
@@ -782,28 +448,6 @@ function adopt(root, byName, metres = false) {
   });
 }
 
-export function createPassenger(src) {
-  const once = (f) => { let m; return (s) => (m ||= f(s)); };
-  adopt(src, {
-    pas_skin: once(skinMaterial),
-    kimono: once(kimonoMaterial),
-    kimono_lining: once(liningMaterial),
-    cloth: once(clothMaterial),
-    obi: once(obiMaterial),
-    hair: once(hairMaterial),
-    kanzashi: once(kanzashiMaterial),
-  });
-  const neck = src.getObjectByName('neck_01');
-  const head = src.getObjectByName('head');
-  return { root: src, neck, head };
-}
-
-export function createWagasa(src) {
-  const once = (f) => { let m; return (s) => (m ||= f(s)); };
-  adopt(src, { wagasa_paper: once(paperMaterial), wagasa_wood: once(frameMaterial), wagasa_thread: once(threadMaterial) });
-  return src;
-}
-
 // the sendo, rigged for the boat: each frame his hips shift and dip with the stroke, his back leans and turns into
 // it, his legs bend so his feet stay where they stand, his hands ride the ro and his arms follow them (two-bone IK
 // on the skeleton, measured from his bind pose, which is mid-stroke with both hands on the ro)
@@ -865,7 +509,8 @@ export function createBoatman(src) {
   };
 
   // o: shift (forward, m), dip (m), lean (forward, rad), turn (rad), grips (world points under his right and left
-  // hands), hands (world rotation of the ro since the bind pose), look (pitch, yaw, roll)
+  // hands), hands (world rotation of the ro since the bind pose), look (pitch, yaw, roll), feet (optional world
+  // points for his left and right ankles; by default they stay where they stood in the bind pose)
   function pose(o) {
     for (const [bone, q, p] of bones) { bone.quaternion.copy(q); bone.position.copy(p); }
     src.updateMatrixWorld(true);
@@ -879,8 +524,8 @@ export function createBoatman(src) {
       rotW(spine[i], dq.setFromAxisAngle(AX.set(1, 0, 0).applyQuaternion(qs), o.lean * share[i]));
       rotW(spine[i], dq.setFromAxisAngle(AX.set(0, 1, 0).applyQuaternion(qs), o.turn * share[i]));
     }
-    for (const L of legs) {
-      src.localToWorld(t.copy(L.end));
+    for (const [i, L] of legs.entries()) {
+      if (o.feet) t.copy(o.feet[i]); else src.localToWorld(t.copy(L.end));
       src.localToWorld(pole.copy(L.mid).add(u1.set(0, 0, 0.5)));
       twoBone(L, t, pole);
       setW(L.C, qt.copy(qs).multiply(L.q));
@@ -903,7 +548,8 @@ export function createBoatman(src) {
     M.decompose(obj.position, obj.quaternion, obj.scale);
     bn.add(obj);
   }
-  return { root: src, pose, attach };
+  // pelvis: where his hips are in the bind pose (figure frame), for seating him
+  return { root: src, pose, attach, pelvis: pelvisF.clone() };
 }
 
 // turn a head on its neck: the neck takes part of the turn, the head the rest, both about axes fixed in the

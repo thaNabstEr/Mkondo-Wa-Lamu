@@ -1,14 +1,25 @@
-// River and lake surface: planar reflection distorted by flow-advected ripples, refraction through the opaque
+// Channel and open-water surface: planar reflection distorted by flow-advected ripples, refraction through the opaque
 // scene (colour + depth), absorption by optical path, sun glitter, lantern glint columns, rain rings,
-// the boat's Kelvin wake and bow wave, shoreline foam and petals resting on the surface.
+// the boat's Kelvin wake and bow wave, and shoreline foam.
 import * as THREE from 'three';
 import { U, UNIFORMS_GLSL, NOISE, ATMOS, MAX_LAMPS } from '../core/shared.js';
-import { riverAt, LAKE } from './layout.js';
+import { riverAt, openAt } from './layout.js';
+import { HULL } from './hull.js';
 import { T_Z0, T_Z1 } from './terrain-gen.js';
 
 export const LAYER_WATER = 1;
 
-// centre-line lookup: x, half-width, slope, lake weight — sampled by z
+// the boat's hull as the water sees it (measured from the model by pipeline/lamu/dhow.py): the waterline's
+// half-widths, an ellipse around it, and a box around the whole boat
+const f3 = (v) => v.toFixed(3);
+const HULL_GLSL = /* glsl */ `
+  const float HULL_WL[36] = float[36](${HULL.wl.map(f3).join(', ')});
+  const float HULL_Z0 = ${f3(HULL.z0)}, HULL_LEN = ${f3(HULL.len)};
+  const float HULL_RX = ${f3(HULL.beam * 1.12)}, HULL_CZ = ${f3(HULL.z0 + HULL.len / 2)}, HULL_RZ = ${f3(HULL.len * 0.52)};
+  const float HULL_BX = ${f3(HULL.beam * 1.2)}, HULL_BZ0 = ${f3(HULL.box.z0 - 0.15)}, HULL_BZ1 = ${f3(HULL.box.z1 + 0.15)}, HULL_BY0 = ${f3(HULL.box.y0 - 0.1)};
+`;
+
+// centre-line lookup: x, half-width, slope, open-water weight — sampled by z
 function riverTexture() {
   const n = 2048;
   const data = new Float32Array(n * 4);
@@ -18,7 +29,7 @@ function riverTexture() {
     data[i * 4] = r.x;
     data[i * 4 + 1] = r.w;
     data[i * 4 + 2] = r.slope;
-    data[i * 4 + 3] = THREE.MathUtils.smoothstep(-z, 2060, 2160);
+    data[i * 4 + 3] = openAt(r.w);
   }
   const t = new THREE.DataTexture(data, n, 1, THREE.RGBAFormat, THREE.FloatType);
   t.minFilter = t.magFilter = THREE.LinearFilter;
@@ -150,7 +161,6 @@ export function createWater(reflection) {
     uRes: { value: new THREE.Vector2(1, 1) },
     uNearFar: { value: new THREE.Vector2(0.1, 5000) },
     uZRange: { value: new THREE.Vector2(T_Z0, T_Z1) },
-    uLake: { value: new THREE.Vector3(LAKE.x, LAKE.z, LAKE.r) },
     uBoatInv: { value: new THREE.Matrix4().makeTranslation(0, 0, -99999) },
     uBoatK: { value: 1 },
     uOar: { value: new THREE.Vector4(0, -99999, 0, -99999) },
@@ -178,9 +188,8 @@ export function createWater(reflection) {
       ${ATMOS}
       uniform sampler2D tReflect, tScene, tDepth, tRipple, tRiver;
       uniform vec2 uRes, uNearFar, uZRange;
-      uniform vec3 uLake;
       uniform mat4 uBoatInv;
-      const float HULL_WL[36] = float[36](0.558, 0.574, 0.608, 0.646, 0.674, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.685, 0.680, 0.670, 0.651, 0.624, 0.588, 0.544, 0.491, 0.426, 0.348, 0.256, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+      ${HULL_GLSL}
       uniform float uBoatK;
       uniform vec4 uOar, uEddy[8], uWake[16];
       uniform mat4 uReflMat;
@@ -280,7 +289,7 @@ export function createWater(reflection) {
         // river-aligned flow
         float zt = clamp((uZRange.x - wp.z) / (uZRange.x - uZRange.y), 0.0, 1.0);
         vec4 rv = texture2D(tRiver, vec2(zt, 0.5));
-        float lake = rv.w;
+        float lake = rv.w; // how open the water is: 0 in the creeks, 1 out on the open water
         vec2 flowDir = normalize(vec2(-rv.z, -1.0));
         float across = clamp((wp.x - rv.x) / max(rv.y, 1.0), -1.5, 1.5);
         float speed = mix(0.85, 0.06, lake) * (1.0 - 0.55 * across * across);
@@ -319,7 +328,7 @@ export function createWater(reflection) {
         float foam = 0.0;
         vec3 bp = (uBoatInv * vec4(wp, 1.0)).xyz; // boat space: +z forward
         // the hull sits just under the surface, which the depth test would otherwise read as a beach
-        float offHull = smoothstep(1.0, 1.35, length(vec2(bp.x / 0.78, (bp.z + 0.68) / 3.5)));
+        float offHull = smoothstep(1.0, 1.35, length(vec2(bp.x / HULL_RX, (bp.z - HULL_CZ) / HULL_RZ)));
         // the wake follows the bow's real track, each point of it carried downstream since the bow passed:
         // wx = metres along that track from the bow, wy = signed distance off it; tb runs back along it
         float wx = -1.0, wy = 0.0, wAge = 1e3, wSpd = 0.0;
@@ -395,7 +404,7 @@ export function createWater(reflection) {
         }
         {
           // collar of ripples ringing the hull (it rocks even at rest)
-          float hullD = length(vec2(bp.x / 0.78, (bp.z + 0.68) / 3.5));
+          float hullD = length(vec2(bp.x / HULL_RX, (bp.z - HULL_CZ) / HULL_RZ));
           float hr = hullD - 1.05;
           float ring = exp(-hr * hr * 18.0);
           n += normalize(bp.xz + 1e-3) * ring * sin(hullD * 26.0 - uTime * 4.0) * 0.35;
@@ -430,16 +439,16 @@ export function createWater(reflection) {
             }
           }
           // the bow cuts a white curl; elsewhere the collar only glints
-          float bowK = smoothstep(0.55, 1.0, (bp.z + 0.68) / 3.5);
+          float bowK = smoothstep(0.55, 1.0, (bp.z - HULL_CZ) / HULL_RZ);
           // streaks pulled back along the hull at the boat's speed, warped so they never settle into cells
           vec2 bq = vec2(bp.x * 3.2, bp.z * 1.1 + uTime * 1.6 * bspd);
           bq += (vec2(sfNoise(bq * 0.5), sfNoise(bq * 0.5 + 3.1)) - 0.5) * 1.4;
           float curl = smoothstep(0.5, 0.82, sfNoise(bq) * 0.6 + sfNoise(bq * 2.7) * 0.4);
           foam += ring * bowK * (0.3 + 0.7 * curl) * 0.6 * min(bspd, 1.0);
-          // inside the hull there is no river: the hull's half-width where its outer planking meets the surface,
-          // sampled from the model every 0.237 m from the transom forward (the forefoot leaves the water at ~2.7 m)
+          // inside the hull there is no water: the hull's half-width where its outer planking meets the surface,
+          // sampled from the model at 36 stations from the transom forward
           {
-            float hi = (bp.z + 4.1) / 8.3 * 35.0;
+            float hi = (bp.z - HULL_Z0) / HULL_LEN * 35.0;
             if (hi > 0.0 && hi < 35.0) {
               int i0 = int(floor(hi));
               float hw = mix(HULL_WL[i0], HULL_WL[min(i0 + 1, 35)], fract(hi));
@@ -503,6 +512,14 @@ export function createWater(reflection) {
         float vDepth = thick2 * max(V.y, 0.05);
         float path = thick2 * 1.6 + vDepth * 2.0;
         vec3 absorb = exp(-path * vec3(0.95, 0.36, 0.42));
+        // the dhow's own bottom: dark with weed, and the turbid creek water hides it within a hand's depth (taken as
+        // clear teal, its pale planks glowed cyan through the surface)
+        {
+          vec3 bpH = (uBoatInv * vec4(cameraPosition + (wp - cameraPosition) * (sceneZ / vViewZ), 1.0)).xyz;
+          float onHull = (1.0 - smoothstep(HULL_BX, HULL_BX + 0.25, abs(bpH.x))) * step(HULL_BZ0, bpH.z) * step(bpH.z, HULL_BZ1) * step(HULL_BY0, bpH.y);
+          path = mix(path, max(path, 0.35) * 2.4, onHull);
+          absorb = exp(-path * mix(vec3(0.95, 0.36, 0.42), vec3(1.15, 0.8, 1.0), onHull));
+        }
         // in-scatter colour of the water body: teal-jade lit by sky and sun
         vec3 body = vec3(0.012, 0.042, 0.036) * (uAmbUp * 1.3 + uSunCol * 0.04 * max(uSunDir.y, 0.0)) * 2.0;
         body = mix(body, body * vec3(0.8, 1.05, 1.15), uSeason.w);
@@ -560,7 +577,7 @@ export function createWater(reflection) {
         float offOar = smoothstep(0.12, 0.45, length(oA - oB * clamp(dot(oA, oB) / max(dot(oB, oB), 1e-4), 0.0, 1.0)));
         // nor is the hull: where what the surface hides is the boat's own planking, it is not shallow water
         vec3 bpU = (uBoatInv * vec4(cameraPosition + (wp - cameraPosition) * (sceneZ / vViewZ), 1.0)).xyz;
-        float offBoat = 1.0 - (1.0 - smoothstep(0.85, 1.1, abs(bpU.x))) * step(-4.45, bpU.z) * step(bpU.z, 4.75) * step(-0.5, bpU.y);
+        float offBoat = 1.0 - (1.0 - smoothstep(HULL_BX, HULL_BX + 0.25, abs(bpU.x))) * step(HULL_BZ0, bpU.z) * step(bpU.z, HULL_BZ1) * step(HULL_BY0, bpU.y);
         foam += shore * 0.55 * (1.0 - lake * 0.6) * offHull * offBoat * offOar * (0.35 + 0.65 * smoothstep(0.35, 0.8, speed));
         // where the river runs fastest it draws its own texture: strings of fine bubbles drawn out along the current,
         // a few metres long, broken into beads, in drifts rather than everywhere. In the river's own frame (metres off
@@ -580,21 +597,6 @@ export function createWater(reflection) {
         vec3 foamCol = (uAmbUp * 0.85 + uSunCol * max(uSunDir.y, 0.0) * 0.1) * 1.05;
         col = mix(col, foamCol, foam * 0.78);
 
-        // hanaikada: in spring, fallen petals drift in rafts along the banks below the avenue, drawn out by the current
-        float petK = uSeason.x * smoothstep(-200.0, -250.0, wp.z) * smoothstep(-780.0, -680.0, wp.z) * (1.0 - lake);
-        if (petK > 0.01) {
-          vec2 pq = wp.xz - flow * uTime * 0.9;
-          vec2 ps = vec2(pq.x * 0.55, pq.y * 0.14);
-          float band = smoothstep(0.45, 0.95, abs(across) + (sfNoise(ps * 0.7) - 0.5) * 0.5);
-          float raft = smoothstep(0.42, 0.66, sfNoise(ps) * 0.6 + sfNoise(pq * 0.9) * 0.4) * band;
-          // a raft is a mat of overlapping petals: ragged edges, granular inside, open water showing through
-          float mat = smoothstep(0.48, 0.92, raft + (sfNoise(pq * 2.7) - 0.5) * 0.5);
-          float grain = mix(smoothstep(0.25, 0.75, sfNoise(pq * 17.0) * 0.6 + sfNoise(pq * 41.0) * 0.4), 0.5, smoothstep(0.008, 0.03, petPx));
-          float pet = max(sfPetals(pq, 0.06 + raft * 0.9 + band * 0.08, petPx), mat * mix(0.15, 0.8, grain));
-          vec3 pcol = vec3(0.8, 0.46, 0.55) * mix(0.8, 1.05, grain) * (uAmbUp * 1.1 + uSunCol * max(uSunDir.y, 0.0) * 0.12);
-          col = mix(col, pcol, clamp(pet, 0.0, 1.0) * petK);
-        }
-
         // soft edge into the shore
         col = mix(under, col, smoothstep(0.0, 0.12, thick));
 
@@ -602,10 +604,12 @@ export function createWater(reflection) {
         gl_FragColor = vec4(col, 1.0);
       }`,
   });
-  const geo = new THREE.PlaneGeometry(1400, 3900, 1, 1);
+  // one quad from behind the start to well past the horizon of the open water, so it never shows an edge
+  const Z0 = T_Z0 + 100, Z1 = -7000;
+  const geo = new THREE.PlaneGeometry(8000, Z0 - Z1, 1, 1);
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(0, 0, (T_Z0 + T_Z1) / 2);
+  mesh.position.set(0, 0, (Z0 + Z1) / 2);
   mesh.layers.set(LAYER_WATER);
   mesh.frustumCulled = false;
   mesh.name = 'water';

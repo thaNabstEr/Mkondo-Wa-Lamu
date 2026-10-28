@@ -1,0 +1,154 @@
+{
+ "url": "http://127.0.0.1:5190/",
+ "w": 1920,
+ "h": 1080,
+ "dpr": 2,
+ "wait": 14,
+ "out": "captures/current",
+ "shots": [
+  {
+   "name": "v1-astern-golden",
+   "s": 1,
+   "h": 17.0,
+   "w": "clear",
+   "z": -200,
+   "settle": 4,
+   "cam": {
+    "yaw": 180,
+    "pitch": 8,
+    "d": 10,
+    "ly": 2.4,
+    "lz": 1.0,
+    "fov": 55
+   }
+  },
+  {
+   "name": "v2-follow-midday",
+   "s": 1,
+   "h": 12.0,
+   "w": "clear",
+   "z": -400,
+   "settle": 4,
+   "cam": {
+    "yaw": 200,
+    "pitch": 14,
+    "d": 14,
+    "ly": 1.5,
+    "lz": 0,
+    "fov": 45
+   }
+  },
+  {
+   "name": "v3-waterlevel",
+   "s": 1,
+   "h": 16.5,
+   "w": "clear",
+   "z": -150,
+   "settle": 4,
+   "cam": {
+    "yaw": 180,
+    "pitch": 0,
+    "d": 3,
+    "ly": 0.5,
+    "lz": 11,
+    "fov": 55
+   }
+  },
+  {
+   "name": "v4-bank-low",
+   "s": 1,
+   "h": 15.0,
+   "w": "clear",
+   "z": -900,
+   "settle": 4,
+   "cam": {
+    "yaw": 160,
+    "pitch": 4,
+    "d": 8,
+    "ly": 1.2,
+    "lz": 0,
+    "fov": 50
+   }
+  },
+  {
+   "name": "v5-aerial",
+   "s": 1,
+   "h": 16.0,
+   "w": "clear",
+   "z": -300,
+   "settle": 4,
+   "cam": {
+    "yaw": 160,
+    "pitch": 55,
+    "d": 70,
+    "ly": 0,
+    "lz": 0,
+    "fov": 45
+   }
+  },
+  {
+   "name": "v6-dusk-wide",
+   "s": 1,
+   "h": 18.3,
+   "w": "clear",
+   "z": -2250,
+   "settle": 4,
+   "cam": {
+    "yaw": 20,
+    "pitch": 6,
+    "d": 30,
+    "ly": 3,
+    "lz": 0,
+    "fov": 45
+   }
+  },
+  {
+   "name": "v7-night",
+   "s": 1,
+   "h": 21.5,
+   "w": "clear",
+   "z": -420,
+   "settle": 4,
+   "cam": {
+    "yaw": 200,
+    "pitch": 10,
+    "d": 12,
+    "ly": 1.5,
+    "lz": 0,
+    "fov": 45
+   }
+  },
+  {
+   "name": "v8-sunset-aerial",
+   "s": 1,
+   "h": 18.1,
+   "w": "clear",
+   "z": -1950,
+   "settle": 4,
+   "cam": {
+    "yaw": 180,
+    "pitch": 12,
+    "d": 110,
+    "ly": 0,
+    "lz": 350,
+    "fov": 55
+   }
+  },
+  {
+   "name": "v9-sandbar",
+   "s": 1,
+   "h": 15.5,
+   "w": "clear",
+   "z": -1230,
+   "settle": 4,
+   "cam": {
+    "yaw": 150,
+    "pitch": 50,
+    "d": 75,
+    "ly": 0,
+    "lz": -10,
+    "fov": 45
+   }
+  }
+ ]
+}

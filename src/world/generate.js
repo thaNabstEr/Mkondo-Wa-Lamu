@@ -1,7 +1,6 @@
 // Runs world generation across a pool of module workers and merges the results.
 import { TERRAIN_CHUNKS, T_Z0, T_Z1 } from './terrain-gen.js';
 import { SPECIES } from './place-trees.js';
-import { KINDS } from './place-grass.js';
 
 const concat = (parts) => {
   const n = parts.reduce((a, p) => a + p.length, 0);
@@ -17,7 +16,6 @@ export async function generateWorld(onProgress) {
   const jobs = [];
   const ranges = (n, z0 = T_Z0, z1 = T_Z1) => Array.from({ length: n }, (_, i) => [z0 - ((z0 - z1) * i) / n, z0 - ((z0 - z1) * (i + 1)) / n]);
   // heavy jobs first so the pool drains evenly
-  ranges(W * 3, 120, T_Z1).forEach(([a, b], i) => jobs.push({ job: 'grass', args: { zFrom: a, zTo: b, seed: 900 + i } }));
   ranges(W * 2).forEach(([a, b], i) => jobs.push({ job: 'trees', args: { zFrom: a, zTo: b, seed: 500 + i } }));
   const chunks = [...Array(TERRAIN_CHUNKS).keys()];
   for (let k = 0; k < W * 2; k++) {
@@ -26,7 +24,7 @@ export async function generateWorld(onProgress) {
   }
   const total = jobs.length;
   let done = 0;
-  const results = { terrain: [], trees: [], grass: [] };
+  const results = { terrain: [], trees: [] };
   await new Promise((resolve, reject) => {
     let next = 0;
     const feed = (w) => {
@@ -48,7 +46,5 @@ export async function generateWorld(onProgress) {
   const terrain = results.terrain.flat().sort((a, b) => a.ci - b.ci);
   const trees = {};
   for (const k of SPECIES) trees[k] = concat(results.trees.map((r) => r[k]));
-  const grass = {};
-  for (const k of KINDS) grass[k] = concat(results.grass.map((r) => r[k]));
-  return { terrain, trees, grass, workers: W };
+  return { terrain, trees, workers: W };
 }

@@ -53,9 +53,10 @@ function valleyIR(ctx, sec = 3.4) {
   return b;
 }
 
-// Where the boat is, as a weight per place: each place fades in and out over ~50 m around its bounds.
+// Where the boat is, as a weight per place: each place fades in and out over ~50 m around its bounds. A place not on
+// this route weighs nothing, so the sounds tied to Sakura's places stay silent until the soundscape is redone.
 function placeWeights(z) {
-  const w = {};
+  const w = new Proxy({}, { get: (o, k) => o[k] ?? 0 });
   for (let i = 0; i < PLACES.length; i++) {
     const a = PLACES[i].z, b = i + 1 < PLACES.length ? PLACES[i + 1].z : null;
     w[PLACES[i].id] = (i === 0 ? 1 : smoothstep(a + 25, a - 25, z)) * (b === null ? 1 : 1 - smoothstep(b + 25, b - 25, z));
@@ -326,6 +327,31 @@ export class Sound {
     n.start(when); n.stop(when + 7);
   }
 
+  // the hull knocking against mud and roots: a dull wooden thud and a slosh, k 0..1
+  bump(when, k) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(95, when);
+    o.frequency.exponentialRampToValueAtTime(52, when + 0.25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(0.35 * k, when + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0008, when + 0.45);
+    o.connect(g).connect(this.amb);
+    o.start(when); o.stop(when + 0.5);
+    const n = ctx.createBufferSource();
+    n.buffer = this.white;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.7;
+    const gn = ctx.createGain();
+    gn.gain.setValueAtTime(0, when);
+    gn.gain.linearRampToValueAtTime(0.12 * k, when + 0.03);
+    gn.gain.exponentialRampToValueAtTime(0.0008, when + 0.7);
+    n.connect(lp).connect(gn).connect(this.amb);
+    n.start(when, Math.random() * 3); n.stop(when + 0.75);
+  }
+
   creak(when) {
     // the ro working against its pin
     const ctx = this.ctx;
@@ -395,7 +421,7 @@ export class Sound {
     const sw = s.seasonW;
     const season = s.season;
     const pw = placeWeights(s.z);
-    this.place = s.lake ? { id: 'lake', t: 0.5 } : placeAt(s.z);
+    this.place = placeAt(s.z);
     const day = s.daylight * (1 - s.rain) * (1 - sw.w * 0.7);
     const h = s.hours;
     const dawn = smoothstep(4, 5, h) * (1 - smoothstep(6.8, 7.8, h));
@@ -419,8 +445,8 @@ export class Sound {
 
     // recorded beds, each where and when it belongs
     const B = this.beds, dry = 1 - s.rain * 0.85;
-    // summer cicadas fill the day at shrines and among trees; a little at dawn in the mist
-    B.cicadas.update(now, 0.22 * sw.y * smoothstep(0.25, 0.6, s.daylight) * dry * (pw.sakura * 0.7 + pw.village + pw.gorge * 0.6 + pw.torii + pw.lake * 0.5 + pw.bridge * 0.6 + pw.asagiri * 0.25 * (1 - dawn)));
+    // cicadas fill the day along the whole channel (Japanese recordings, a placeholder), thinning out on the open water
+    B.cicadas.update(now, 0.22 * sw.y * smoothstep(0.25, 0.6, s.daylight) * dry * (1 - s.open * 0.8));
     // crickets on late-summer and autumn nights; the bell cricket closest to the boat
     const nightInsects = smoothstep(0.3, 0.75, s.night) * dry * (1 - pw.gorge * 0.5);
     B.insects.update(now, 0.25 * (sw.z + sw.y * 0.4) * nightInsects);
@@ -482,5 +508,6 @@ export class Sound {
     if (kind === 'bell') this.bell(now + 0.05, data.dist, data.which || 0);
     if (kind === 'boom') this.boom(now + data.delay, data.dist);
     if (kind === 'thunder') this.thunder(now + data.delay, data.dist);
+    if (kind === 'bump') this.bump(now + 0.01, data.k);
   }
 }

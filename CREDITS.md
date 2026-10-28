@@ -1,10 +1,35 @@
 # Credits
 
-The source code is MIT-licensed (see [LICENSE](LICENSE)). The assets in `public/assets` were made for this project
-or come from the sources below, each under its own licence. Everything here can be redistributed. Nothing is used
-under a non-commercial or no-derivatives licence.
+Mkondo wa Lamu is built on **[Sakura Fantasy](https://github.com/billpwchan/sakura-fantasy)** by Bill Chan (MIT): its
+engine, water, light, weather, camera, interface and much else. The source code is MIT-licensed (see
+[LICENSE](LICENSE)). The assets in `public/assets` were made for Sakura Fantasy or for Mkondo wa Lamu, or come from
+the sources below, each under its own licence. Nothing is used under a non-commercial or no-derivatives licence.
 
-## Plants: CC0
+## Mkondo wa Lamu
+
+Each downloaded asset is processed by a script in `pipeline/lamu/` before it ships; the scripts say what was changed.
+
+| File in the game | Source | Creator (as shown on its page) | Licence | Downloaded | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `models/dhow.glb`, `models/hi/dhow.glb` | [Dhow](https://sketchfab.com/3d-models/dhow-5217bd7dffdf4928823e5e489e40617c) (Sketchfab) | gogiart (@agt14032013) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 2026-10-27 (file date) | Turned, scaled ×1.1, decimated into two tiers (`pipeline/lamu/dhow.py`); the sail's eye and the bow boards are added |
+| `models/mangrove/red_lod*.glb` | [red-mangrove-tree](https://sketchfab.com/3d-models/red-mangrove-tree-e806105d83bc440499495e62bb010f7a) (Sketchfab) | SAVIA_Colombia (@Minambiente_Col) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 2026-10-27 (file date) | Scaled to a 7.4 m crown, cut-out leaves, thinned into near and mid versions and far cards rendered from it (`pipeline/lamu/mangrove.py`); bark toned darker |
+| `models/mangrove/light_lod2.glb` | [Mangrove Tree](https://sketchfab.com/3d-models/mangrove-tree-5d4542431caa46f0b6f1feb089fc19dd) (Sketchfab) | Nice2meetU2 | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 2026-10-27 (file date) | Far cards rendered from it; its leaves cut out by keying their colour (`pipeline/lamu/mangrove.py`) |
+| `models/mangrove/rhizo_lod2.glb` | [CC0 ヤエヤマヒルギ Red Mangrove, Rhizophora mucronata](https://sketchfab.com/3d-models/cc0-red-mangrove-rhizophora-mucronata-5658cc5123b14393abbeb65174b0f85a) (Sketchfab) | ffish.asia / floraZia.com (@ffishAsia-and-floraZia) | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-27 (file date) | A field scan of a clump: far cards rendered from it, its mud cut away and grey patches greened (`pipeline/lamu/mangrove.py`) |
+| `models/mangrove/brug_lod*.glb` | [CC0 オヒルギ Black Mangrove, Bruguiera gymnorhiza](https://sketchfab.com/3d-models/cc0-black-mangrove-bruguiera-gymnorhiza-e075db44fc4d4c2c8a1598728803d744) (Sketchfab) | ffish.asia / floraZia.com (@ffishAsia-and-floraZia) | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-27 (file date) | Its scanned leaves and flowers rendered into spray cells (`pipeline/lamu/bruguiera_sprays.py`), carried on a tree grown in code (`bruguiera_tree.py`) with the red mangrove's bark image, then tiered like the others |
+| `tex/damp_beach_sand_02_*.webp` | [Damp Beach Sand 02](https://polyhaven.com/a/damp_beach_sand_02) (Poly Haven) | Dimitrios Savva | [CC0](https://polyhaven.com/license) | 2026-10-28 | 1K colour and normal (`scripts/fetch-assets.mjs`); lightened in the terrain shader to pale coral sand |
+| `tex/mud_puddles_*.webp` | Muddy ground with puddles, `ground_0034` ([TextureCan](https://www.texturecan.com/)) | TextureCan | [CC0](https://www.texturecan.com/terms/) (no attribution required) | 2026-10-27 (file date) | 1K colour and OpenGL normal (`pipeline/lamu/ground.sh`): the banks |
+| `tex/mud_leaves_*.webp` | Wet muddy ground with fallen leaves, `ground_0005` ([TextureCan](https://www.texturecan.com/)) | TextureCan | [CC0](https://www.texturecan.com/terms/) (no attribution required) | 2026-10-27 (file date) | 1K colour and OpenGL normal (`pipeline/lamu/ground.sh`): the forest floor |
+
+Made for Mkondo wa Lamu:
+- The Lamu eye on the sail: the project's own artwork (`emblem.png`).
+- The bow boards: an original design in the Lamu manner, drawn in code (`pipeline/lamu/textures.mjs`).
+- The dhow's rudder head and tiller: a fitting added to the downloaded model, which has none (`pipeline/lamu/dhow.py`).
+
+## Sakura Fantasy
+
+The assets Mkondo wa Lamu keeps from Sakura Fantasy (the boatman, textures, props, sounds) and their sources:
+
+### Plants: CC0
 
 Every tree, shrub, flower and grass atlas was rendered from photogrammetry scans by
 **[ffish.asia / floraZia](https://sketchfab.com/ffishAsia-and-floraZia)**, released under
@@ -27,7 +52,7 @@ Every tree, shrub, flower and grass atlas was rendered from photogrammetry scans
 
 [`pipeline/README.md`](pipeline/README.md) links each scan.
 
-## Textures and props: CC0
+### Textures and props: CC0
 
 - **[Poly Haven](https://polyhaven.com)**, [CC0](https://polyhaven.com/license).
   - Textures: ground, rock, pebbles, snow, bark, planks, stone wall, roof tiles, reed roof, plaster.
@@ -36,7 +61,7 @@ Every tree, shrub, flower and grass atlas was rendered from photogrammetry scans
 - **[ambientCG](https://ambientcg.com)**, [CC0](https://docs.ambientcg.com/license/): wicker, rope, thatch and paper
   textures on the boat.
 
-## Statues: CC BY 4.0
+### Statues: CC BY 4.0
 
 Both statues were simplified and regraded:
 - [Komainu Statue](https://sketchfab.com/3d-models/komainu-statue-a5d4791ae95d4a9d9becedab6d2c7fc2) by
@@ -46,18 +71,18 @@ Both statues were simplified and regraded:
   by [MTSU Animation Virtual Production](https://sketchfab.com/fusion),
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
-## People
+### People
 
 The boatman and the passenger are built on bodies from **[MPFB 2 / MakeHuman](https://static.makehumancommunity.org/mpfb.html)**.
 Their assets are [CC0](https://static.makehumancommunity.org/about/license.html). Their clothes, hair and the wagasa
 were made for this project.
 
-## Boat, buildings, water, sky, effects
+### Boat, buildings, water, sky, effects
 
 These were made for this project: the boat is built by `pipeline/boat/build.py`, and everything else is generated in
 code.
 
-## Sound
+### Sound
 
 Every recording below was trimmed, filtered and levelled by `pipeline/audio/build.py`, which also fetches them.
 The river, wind, rain, oar, fireworks, thunder and higurashi are synthesised in code.
@@ -97,18 +122,18 @@ Public domain and CC0, credited with thanks:
   - A summer festival and rice-field frogs: [macdaddyno1](https://freesound.org/s/352605/),
     [macdaddyno1](https://freesound.org/s/396491/).
 
-## Words
+### Words
 
 The haiku are classical and in the public domain:
 - Bashō, Buson, Issa, Shiki and others;
 - the English renderings are our own.
 
-## Fonts
+### Fonts
 
 The interface fonts are served by Google Fonts under the [SIL Open Font License](https://openfontlicense.org):
 - Shippori Mincho B1;
 - Cormorant Garamond.
 
-## Inspiration
+### Inspiration
 
 Meng To's *Sakura River Valley* (2026) inspired the project. None of its code or assets are used.

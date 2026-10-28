@@ -1,5 +1,6 @@
-// Valley terrain: chunks along the river, columns dense at the water and stretching out to the ridges.
-// Shading: riverbed pebbles, wet shore, seasonal meadow, forest floor, triplanar rock, settled snow.
+// The coast's terrain: chunks along the channel, columns dense at the water and stretching out to the haze.
+// Shading: sand on the shallows and sandbars, dark silt in the deep, mud on the banks, the mangrove floor (mud and
+// fallen leaves) under the forest, and Sakura's meadow, triplanar rock and settled snow where any still show.
 import * as THREE from 'three';
 import { patch } from '../core/shared.js';
 
@@ -27,7 +28,9 @@ export function createTerrain(data, tex) {
     tTurfC: { value: S('turf_c') }, tTurfN: { value: S('turf_n') },
     tGroundC: { value: S('forrest_ground_01_c') }, tGroundN: { value: S('forrest_ground_01_n') },
     tRockC: { value: S('rock_face_c') }, tRockN: { value: S('rock_face_n') },
-    tPebC: { value: S('ganges_river_pebbles_c') }, tPebN: { value: S('ganges_river_pebbles_n') },
+    tSandC: { value: S('damp_beach_sand_02_c') }, tSandN: { value: S('damp_beach_sand_02_n') },
+    tMudC: { value: S('mud_puddles_c') }, tMudN: { value: S('mud_puddles_n') },
+    tLitterC: { value: S('mud_leaves_c') }, tLitterN: { value: S('mud_leaves_n') },
     tLeafC: { value: S('forest_leaves_02_c') },
     tSnowC: { value: S('snow_02_c') }, tSnowN: { value: S('snow_02_n') },
   };
@@ -39,7 +42,7 @@ export function createTerrain(data, tex) {
     vertexHead: /* glsl */ `attribute vec2 aAux; varying vec2 vAux; varying vec3 vGN;`,
     fragHead: /* glsl */ `
       varying vec2 vAux; varying vec3 vGN;
-      uniform sampler2D tGrassC, tGrassN, tTurfC, tTurfN, tGroundC, tGroundN, tRockC, tRockN, tPebC, tPebN, tLeafC, tSnowC, tSnowN;
+      uniform sampler2D tGrassC, tGrassN, tTurfC, tTurfN, tGroundC, tGroundN, tRockC, tRockN, tSandC, tSandN, tMudC, tMudN, tLitterC, tLitterN, tLeafC, tSnowC, tSnowN;
       vec3 sfTerrN; float sfTerrRough;
       vec3 unpackN(vec4 t){ return t.xyz * 2.0 - 1.0; }
     `,
@@ -58,16 +61,17 @@ export function createTerrain(data, tex) {
 
         // weights
         float rockW = smoothstep(0.30, 0.52, slope + (nA - 0.5) * 0.22);
-        // the gorge walls are held by bamboo roots: leaf litter and moss, bare rock only where it breaks through
-        float gorgeK = smoothstep(-1170.0, -1240.0, wp.z) * smoothstep(-1650.0, -1580.0, wp.z);
-        rockW *= mix(1.0, smoothstep(0.58, 0.78, nA + (nB - 0.5) * 0.35), gorgeK);
         float bedW = smoothstep(0.12, -0.3, wp.y + (nB - 0.5) * 0.3);
         float shoreW = (1.0 - bedW) * smoothstep(3.6, 0.6, sd + (nB - 0.5) * 2.2) * (1.0 - rockW);
-        float groundW = max(clamp(forest * 1.6 - 0.1 + (nA - 0.5) * 0.4, 0.0, 1.0), gorgeK * smoothstep(0.12, 0.3, slope)) * (1.0 - rockW) * (1.0 - bedW) * (1.0 - shoreW);
+        float groundW = clamp(forest * 1.6 - 0.1 + (nA - 0.5) * 0.4, 0.0, 1.0) * (1.0 - rockW) * (1.0 - bedW) * (1.0 - shoreW);
         float grassW = max(0.0, 1.0 - rockW - bedW - shoreW - groundW);
+        // sand: in the channel, wherever its bed shelves up toward the surface (the shallows by the banks, the
+        // sandbars on the inside of the bends, their crests just out of the water); the deep bed is dark silt and
+        // the banks are mud
+        float inCh = smoothstep(0.8, -0.4, sd);
+        float sandW = inCh * smoothstep(-1.5, -0.55, wp.y + (nB - 0.5) * 0.5);
 
         vec2 uv = wp.xz;
-        float petPx = length(fwidth(wp.xz));
         float detail = smoothstep(420.0, 240.0, dist);
         vec3 alb = vec3(0.0);
         vec3 tn = vec3(0.0, 0.0, 1.0);
@@ -80,12 +84,15 @@ export function createTerrain(data, tex) {
         vec3 decid = mix(vec3(0.045, 0.07, 0.03), vec3(0.03, 0.06, 0.022), su);
         decid = mix(decid, mix(vec3(0.2, 0.06, 0.02), vec3(0.2, 0.12, 0.02), nC), au);
         decid = mix(decid, vec3(0.06, 0.055, 0.05), wi);
-        vec3 farForest = mix(vec3(0.022, 0.042, 0.026), decid, smoothstep(0.35, 0.75, nC) * 0.8);
+        // under the mangroves: dim olive litter and seedlings, so a gap in the canopy seen from above is a deeper green,
+        // not a hole
+        vec3 farForest = mix(vec3(0.045, 0.06, 0.03), decid, smoothstep(0.35, 0.75, nC) * 0.5);
         // a canopy from afar: crowns as soft blobs with darker gaps
         float crowns = sfNoise(wp.xz * 0.33) * 0.6 + sfNoise(wp.xz * 0.9 + 3.0) * 0.4;
-        farForest *= 0.45 + 1.05 * smoothstep(0.3, 0.75, crowns);
+        farForest *= 0.7 + 0.6 * smoothstep(0.3, 0.75, crowns);
         vec3 farRock = vec3(0.13, 0.13, 0.12) * (0.8 + 0.4 * nA);
-        vec3 farCol = farGrass * grassW + farForest * groundW + farRock * rockW + vec3(0.1, 0.09, 0.07) * (bedW + shoreW);
+        vec3 farShore = mix(vec3(0.08, 0.068, 0.05), vec3(0.24, 0.21, 0.15), sandW);
+        vec3 farCol = farGrass * grassW + farForest * groundW + farRock * rockW + farShore * (bedW + shoreW);
         farCol *= 0.8 + 0.4 * nB;
 
         if (detail > 0.0) {
@@ -119,32 +126,36 @@ export function createTerrain(data, tex) {
             n += mix(unpackN(textureGrad(tGrassN, u1, dx / 3.4, dy / 3.4)), unpackN(textureGrad(tTurfN, u4, dx / 2.0, dy / 2.0)), turfW) * grassW;
           }
           if (groundW > 0.01) {
-            vec2 u2 = uv / 4.0;
-            vec3 g = textureGrad(tGroundC, u2, dx / 4.0, dy / 4.0).rgb;
-            vec3 lf = textureGrad(tLeafC, uv / 3.0 + 0.5, dx / 3.0, dy / 3.0).rgb;
-            g = mix(g, lf * vec3(1.15, 0.9, 0.7), au * 0.75);
-            // moss under the bamboo
-            g = mix(g, g * vec3(0.62, 0.92, 0.42) + vec3(0.0, 0.012, 0.0), gorgeK * smoothstep(0.35, 0.7, nB) * (1.0 - wi) * 0.85);
-            // a Japanese wood's floor is under kumazasa, ferns and moss, not bare litter: the litter shows through in
-            // clearings and more of it in autumn; beyond a few tens of metres the undergrowth is all one sees of it
-            float under = clamp(0.35 + 0.45 * smoothstep(12.0, 70.0, dist) + (sfNoise(wp.xz * 0.18 + 4.0) - 0.5) * 0.9, 0.0, 0.92);
-            under *= 1.0 - 0.45 * au - 0.5 * wi;
-            vec3 ug = mix(vec3(0.05, 0.075, 0.03), vec3(0.075, 0.095, 0.035), nB);
-            ug = mix(ug, vec3(0.07, 0.065, 0.035), au * 0.5);
-            g = mix(g * vec3(0.72, 0.66, 0.58), ug, under);
-            c += g * (0.6 + 0.3 * nA) * groundW;
-            n += unpackN(textureGrad(tGroundN, u2, dx / 4.0, dy / 4.0)) * groundW;
+            // the mangrove floor: wet mud strewn with fallen leaves, two scales so its tile never shows; further off,
+            // in the canopy's shade, seedlings and litter make it a dim olive
+            vec2 u2 = uv / 3.2, u2b = mat2(0.8, -0.6, 0.6, 0.8) * uv / 9.0 + 0.3;
+            vec3 g = textureGrad(tLitterC, u2, dx / 3.2, dy / 3.2).rgb;
+            g *= mix(0.85, 1.15, textureGrad(tLitterC, u2b, dx / 9.0, dy / 9.0).g * 2.5);
+            float under = clamp(0.2 + 0.5 * smoothstep(15.0, 80.0, dist) + (sfNoise(wp.xz * 0.18 + 4.0) - 0.5) * 0.6, 0.0, 0.85);
+            vec3 ug = mix(vec3(0.07, 0.085, 0.035), vec3(0.09, 0.1, 0.045), nB);
+            g = mix(g * vec3(0.8, 0.76, 0.68), ug, under);
+            c += g * (0.7 + 0.3 * nA) * groundW;
+            n += unpackN(textureGrad(tLitterN, u2, dx / 3.2, dy / 3.2)) * groundW;
           }
           if (bedW + shoreW > 0.01) {
-            vec2 u3 = uv / 2.6;
-            vec3 g = textureGrad(tPebC, u3, dx / 2.6, dy / 2.6).rgb;
-            // the shore is darker and muddier near the waterline, mossy just under it
-            vec3 mud = vec3(0.09, 0.075, 0.055) * (0.8 + 0.4 * nB);
-            vec3 shore = mix(g, mud, smoothstep(1.4, 0.2, sd) * 0.45);
-            vec3 bed = mix(g * vec3(0.8, 0.9, 0.75), vec3(0.05, 0.07, 0.04), smoothstep(-0.2, -1.4, wp.y) * 0.45);
+            // sand: pale coral sand, damp and rippled by the tide; mud: the banks' grey-brown, with standing puddles
+            vec2 u3 = uv / 3.0, u6 = uv / 2.4;
+            // (the scan is of dark, wet sand: lifted to the pale coral sand of Lamu's shallows, palest where it has dried
+            // on the crests)
+            vec3 sand = textureGrad(tSandC, u3, dx / 3.0, dy / 3.0).rgb * vec3(2.2, 2.05, 1.75) * mix(0.8, 1.15, smoothstep(-0.3, 0.25, wp.y));
+            sand *= mix(0.9, 1.08, sfNoise(wp.xz * 0.07 + 2.0));
+            // (its puddles hold a grey sky: toned to the dark brown-grey mud of the mangrove banks)
+            vec3 mud = textureGrad(tMudC, u6, dx / 2.4, dy / 2.4).rgb;
+            mud = mix(mud, vec3(dot(mud, vec3(0.33))), 0.4) * vec3(0.62, 0.52, 0.42);
+            // the deep bed: silt, darker and greener the deeper it lies
+            vec3 silt = mix(mud * 0.8, vec3(0.05, 0.06, 0.04), smoothstep(-0.8, -2.2, wp.y) * 0.6);
+            vec3 shore = mix(mud, sand, sandW);
+            vec3 bed = mix(silt, sand, sandW);
             c += shore * shoreW + bed * bedW;
-            n += unpackN(textureGrad(tPebN, u3, dx / 2.6, dy / 2.6)) * (shoreW + bedW);
-            rough = mix(rough, 0.55, smoothstep(1.2, 0.0, sd) * shoreW);
+            vec3 sn = unpackN(textureGrad(tSandN, u3, dx / 3.0, dy / 3.0)), mn = unpackN(textureGrad(tMudN, u6, dx / 2.4, dy / 2.4));
+            n += mix(mn, sn, sandW) * (shoreW + bedW);
+            // the mud glistens at the waterline; the sand above it is only damp
+            rough = mix(rough, mix(0.4, 0.62, sandW), smoothstep(1.2, 0.0, sd) * shoreW);
           }
           if (rockW > 0.01) {
             // triplanar, skipping projections that barely contribute
@@ -156,28 +167,13 @@ export function createTerrain(data, tex) {
             if (bw.z > 0.05) { vec2 t = wp.xy * s; rc += textureGrad(tRockC, t, dFdx(t), dFdy(t)).rgb * bw.z; vec3 q = unpackN(textureGrad(tRockN, t, dFdx(t), dFdy(t))); rn += vec3(q.x, q.y, 0.0) * bw.z; }
             // the scanned rock is dark: lift it to a plausible albedo, a little moss in the cracks
             rc *= 1.5;
-            // the scan is a warm sandstone; the valley's rock is grey andesite, greener in the damp gorge
+            // the scan is a warm sandstone; the valley's rock is grey andesite
             float rl = dot(rc, vec3(0.3, 0.59, 0.11));
-            rc = mix(rc, vec3(rl) * vec3(0.96, 1.0, 0.97), 0.45 + 0.35 * gorgeK);
-            rc = mix(rc, vec3(0.06, 0.08, 0.035), smoothstep(0.5, 0.8, nB) * (0.35 + 0.4 * gorgeK) * (1.0 - wi));
+            rc = mix(rc, vec3(rl) * vec3(0.96, 1.0, 0.97), 0.45);
+            rc = mix(rc, vec3(0.06, 0.08, 0.035), smoothstep(0.5, 0.8, nB) * 0.35 * (1.0 - wi));
             c += rc * rockW;
             sfTerrN = rn;
           }
-          // fallen petals carpet the cherry avenue in spring, drifting into the hollows: a pink cast where they lie
-          // thick, single petals scattered elsewhere
-          float avenue = smoothstep(-205.0, -245.0, wp.z) * smoothstep(-675.0, -630.0, wp.z) * smoothstep(24.0, 7.0, sd) * smoothstep(-0.05, 0.25, wp.y);
-          float petK = avenue * sp * (1.0 - rockW);
-          if (petK > 0.01) {
-            float drift = smoothstep(0.3, 0.8, sfNoise(wp.xz * 0.4 + 2.0) * 0.6 + sfNoise(wp.xz * 1.7) * 0.4);
-            vec3 pcol = vec3(0.86, 0.62, 0.68);
-            float pet = sfPetals(wp.xz, 0.14 + 0.7 * drift * drift, petPx);
-            c = mix(c, pcol * 0.8, drift * drift * 0.22 * petK);
-            c = mix(c, pcol, pet * petK);
-          }
-          // the rock the waterfall runs over is soaked dark, with slick moss at its edges
-          float wfK = smoothstep(9.0, 4.0, abs(wp.z + 1405.0)) * smoothstep(-34.0, -38.0, wp.x) * smoothstep(80.0, 60.0, wp.y);
-          c = mix(c, c * vec3(0.4, 0.46, 0.42), wfK);
-          rough = mix(rough, 0.25, wfK);
           alb = mix(farCol, c, detail);
           tn = normalize(vec3(n.xy * detail, 1.0));
         } else {
@@ -197,7 +193,7 @@ export function createTerrain(data, tex) {
         }
         // the waterline: wet dark band
         float wetLine = smoothstep(0.55, 0.0, wp.y) * (1.0 - bedW);
-        alb *= 1.0 - 0.35 * wetLine;
+        alb *= 1.0 - mix(0.35, 0.15, sandW) * wetLine;
         rough = mix(rough, 0.3, wetLine * 0.8);
 
         diffuseColor.rgb = alb;

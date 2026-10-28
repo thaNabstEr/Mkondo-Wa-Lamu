@@ -1,11 +1,16 @@
 node_modules
 dist
+Context
 .DS_Store
 *.log
 
 # local working state: downloaded scans, Blender files, renders, perf captures
 .cache
-captures
+captures/*
+!captures/*/
+captures/*/*
+# the contact sheet of each step's fixed views is kept: docs/PHASE1_LOG.md refers to them
+!captures/*/sheet.jpg
 
 # tool and deploy settings that belong to one machine
 .claude

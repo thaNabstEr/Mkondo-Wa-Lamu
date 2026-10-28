@@ -17,7 +17,6 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const BRANCH = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
 const NUM = ['一', '二', '三', '四', '五', '六', '七'];
-const GLYPH = { asagiri: '朝', sakura: '桜', bridge: '橋', village: '塔', gorge: '竹', torii: '鳥', lake: '湖' };
 const SEASON_BTN = [['春', 'Spring'], ['夏', 'Summer'], ['秋', 'Autumn'], ['冬', 'Winter']];
 const WEATHER_BTN = [['clear', '晴', 'Clear'], ['mist', '霧', 'Mist'], ['rain', '雨', 'Rain'], ['storm', '嵐', 'Storm'], ['snow', '雪', 'Snow']];
 const CAM_BTN = [['follow', '随', 'Follow'], ['seat', '座', 'Passenger'], ['cinema', '映', 'Cinematic']];
@@ -295,8 +294,8 @@ export class UI {
     this.railDone = sc.querySelector('.done');
     const j = this.app.journey;
     this.nodes = PLACES.map((p, i) => {
-      const n = $('button', 'node', `<span class="pip"></span><span class="g">${GLYPH[p.id]}</span><span class="tip"><b>${p.jp}</b><i>${p.en}</i></span>`);
-      n.setAttribute('aria-label', `${p.jp} — ${p.en}`);
+      const n = $('button', 'node', `<span class="pip"></span><span class="g">${p.sw[0]}</span><span class="tip"><b>${p.sw}</b><i>${p.en}</i></span>`);
+      n.setAttribute('aria-label', `${p.sw} — ${p.en}`);
       n.style.top = `${(j.sAtZ(p.z) / j.total) * 100}%`;
       n.addEventListener('click', () => this.app.jumpTo(i));
       sc.appendChild(n);
